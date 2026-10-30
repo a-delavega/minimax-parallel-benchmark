@@ -1,0 +1,2 @@
+add_executable(pretty_print pretty_print.cpp)
+target_link_libraries(pretty_print PRIVATE minimax_core)
