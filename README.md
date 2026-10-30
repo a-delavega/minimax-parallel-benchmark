@@ -32,9 +32,11 @@ The game state is represented entirely within **two 64-bit unsigned integers** (
 
 ### Column-Major Layout with Sentinel Bits
 
-To eliminate array lookups and branch mispredictions, the $7 \times 6$ board is mapped using **7 bits per column** (rows 0–5 for playable cells, row 6 reserved as a **sentinel bit** always set to `0`):
+To eliminate array lookups and branch mispredictions, the 7x6 board is mapped using **7 bits per column** (rows 0–5 for playable cells, row 6 reserved as a **sentinel bit** always set to `0`):
 
-$$\text{bit\_index} = \text{column} \times 7 + \text{row}$$
+```text
+bit_index = column * 7 + row
+```
 
 ```
   Col:    0     1     2     3     4     5     6
@@ -51,21 +53,23 @@ Row 0  |  0  |  7  | 14  | 21  | 28  | 35  | 42  |  <-- Bottom row
 
 ### Why the Sentinel Bit Matters
 
-During diagonal win detection, bit shifts of $\pm 6$ (ascending diagonal `/`) and $\pm 8$ (descending diagonal `\`) could wrap across column boundaries and trigger false-positive 4-in-a-row detections. 
+During diagonal win detection, bit shifts of ±6 (ascending diagonal `/`) and ±8 (descending diagonal `\`) could wrap across column boundaries and trigger false-positive 4-in-a-row detections. 
 
-By enforcing row 6 to remain `0` permanently, any diagonal shift attempting to spill into the adjacent column is masked out by a logical `AND` with zero, ensuring correctness in $O(1)$ with **zero branching**.
+By enforcing row 6 to remain `0` permanently, any diagonal shift attempting to spill into the adjacent column is masked out by a logical `AND` with zero, ensuring correctness in O(1) with **zero branching**.
 
-### $O(1)$ Win Detection via Bit Shifts
+### O(1) Win Detection via Bit Shifts
 
-A 4-in-a-row in any direction $d$ is determined by two consecutive shifts:
+A 4-in-a-row in any direction `d` is determined by two consecutive shifts:
 
-$$\text{mask} = b \ \& \ (b \gg d)$$
-$$\text{has\_won} = (\text{mask} \ \& \ (\text{mask} \gg 2d)) \ne 0$$
+```cpp
+mask    = b & (b >> d)
+has_won = (mask & (mask >> (2 * d))) != 0
+```
 
-- **Vertical**: $d = 1$
-- **Horizontal**: $d = 7$
-- **Diagonal (`/`)**: $d = 6$
-- **Diagonal (`\`)**: $d = 8$
+- **Vertical**: `d = 1`
+- **Horizontal**: `d = 7`
+- **Diagonal (`/`)**: `d = 6`
+- **Diagonal (`\`)**: `d = 8`
 
 ---
 
