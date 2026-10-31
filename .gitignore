@@ -19,3 +19,6 @@ CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 Makefile
+
+# Local docs and notes
+docs/
