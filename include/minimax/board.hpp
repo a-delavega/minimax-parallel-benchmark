@@ -47,9 +47,17 @@ struct Board {
         (1ULL << 28) | (1ULL << 35) | (1ULL << 42);
 
     // Row 5 (top valid playable row) of all columns (bits 5, 12, 19, 26, 33, 40, 47)
-    static constexpr uint64_t TOP_MASK = 
+    static constexpr uint64_t TOP_ROW_MASK = 
         (1ULL << 5)  | (1ULL << 12) | (1ULL << 19) | (1ULL << 26) | 
         (1ULL << 33) | (1ULL << 40) | (1ULL << 47);
+
+    // Row 6 (sentinel row above top playable row) of all columns (bits 6, 13, 20, 27, 34, 41, 48)
+    static constexpr uint64_t SENTINEL_MASK = 
+        (1ULL << 6)  | (1ULL << 13) | (1ULL << 20) | (1ULL << 27) | 
+        (1ULL << 34) | (1ULL << 41) | (1ULL << 48);
+
+    // Backward-compatible alias
+    static constexpr uint64_t TOP_MASK = SENTINEL_MASK;
 
     // All valid playable cells (rows 0 to 5 for all 7 columns)
     // 6 continuous bits per column
@@ -70,7 +78,7 @@ struct Board {
     [[nodiscard]] constexpr bool is_valid_move(Column col) const noexcept {
         if (col < 0 || col >= COLS) return false;
         // If the target bit reaches row 6 (sentinel), column is full
-        return (TOP_MASK & (1ULL << height[col])) == 0;
+        return (SENTINEL_MASK & (1ULL << height[col])) == 0;
     }
 
     /**

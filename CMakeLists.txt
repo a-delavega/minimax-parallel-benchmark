@@ -44,7 +44,7 @@ endif()
 # ============================================================
 # Project Configurable Options
 # ============================================================
-option(MMB_BUILD_TESTS      "Build unit tests"       OFF)
+option(MMB_BUILD_TESTS      "Build unit tests"       ON)
 option(MMB_BUILD_BENCHMARKS "Build Google Benchmark" OFF)
 option(MMB_BUILD_TOOLS      "Build debug tools"      ON)
 
