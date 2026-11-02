@@ -18,7 +18,7 @@ struct BenchmarkRecord {
     std::string engine_name;
     std::string evaluator_name;
     int depth = 0;
-    Column best_move = -1;
+    Column best_move = -1; // Stored 1-based [1, 7]
     Score score = 0;
     uint64_t nodes = 0;
     double duration_ms = 0.0;
@@ -34,21 +34,20 @@ Board create_opening_board() {
 // Test position 2: Asymmetric midgame (8 moves played)
 Board create_midgame_board() {
     Board b;
-    b.make_move(3); // P1
-    b.make_move(3); // P2
-    b.make_move(2); // P1
-    b.make_move(4); // P2
-    b.make_move(3); // P1
-    b.make_move(2); // P2
-    b.make_move(4); // P1
-    b.make_move(1); // P2
+    b.make_move(3); // P1 col 4 (1-based)
+    b.make_move(3); // P2 col 4 (1-based)
+    b.make_move(2); // P1 col 3 (1-based)
+    b.make_move(4); // P2 col 5 (1-based)
+    b.make_move(3); // P1 col 4 (1-based)
+    b.make_move(2); // P2 col 3 (1-based)
+    b.make_move(4); // P1 col 5 (1-based)
+    b.make_move(1); // P2 col 2 (1-based)
     return b;
 }
 
 // Test position 3: Tactical complex tension (14 moves played with multiple threats)
 Board create_tactical_board() {
     Board b;
-    // Moves to build diagonal and horizontal threats
     b.make_move(3); // P1
     b.make_move(3); // P2
     b.make_move(2); // P1
@@ -68,12 +67,12 @@ Board create_tactical_board() {
 
 void print_table(const std::vector<BenchmarkRecord>& records) {
     std::cout << "\n"
-              << "+-----------------+------------------+-------+------+---------+-----------+-----------+------------+-------+\n"
-              << "| Posicion        | Motor/Evaluador  | Prof. | Jug. | Score   | Nodos     | Tiempo ms | NPS        | b*    |\n"
-              << "+-----------------+------------------+-------+------+---------+-----------+-----------+------------+-------+\n";
+              << "+--------------------+------------------+-------+------+---------+-----------+-----------+------------+-------+\n"
+              << "| Position           | Engine/Evaluator | Depth | Move | Score   | Nodes     | Time ms   | NPS        | b*    |\n"
+              << "+--------------------+------------------+-------+------+---------+-----------+-----------+------------+-------+\n";
 
     for (const auto& r : records) {
-        std::cout << "| " << std::left  << std::setw(15) << r.position_name
+        std::cout << "| " << std::left  << std::setw(18) << r.position_name
                   << " | " << std::left  << std::setw(16) << r.engine_name
                   << " | " << std::right << std::setw(5)  << r.depth
                   << " | " << std::right << std::setw(4)  << r.best_move
@@ -85,13 +84,13 @@ void print_table(const std::vector<BenchmarkRecord>& records) {
                   << " |\n";
     }
 
-    std::cout << "+-----------------+------------------+-------+------+---------+-----------+-----------+------------+-------+\n";
+    std::cout << "+--------------------+------------------+-------+------+---------+-----------+-----------+------------+-------+\n";
 }
 
 void export_csv(const std::vector<BenchmarkRecord>& records, const std::string& filename) {
     std::ofstream file(filename);
     if (!file.is_open()) {
-        std::cerr << "No se pudo crear el archivo CSV: " << filename << std::endl;
+        std::cerr << "Failed to create CSV file: " << filename << std::endl;
         return;
     }
 
@@ -109,12 +108,12 @@ void export_csv(const std::vector<BenchmarkRecord>& records, const std::string& 
              << std::fixed << std::setprecision(3) << r.effective_b << "\n";
     }
 
-    std::cout << "\n[OK] Datos exportados exitosamente a: " << filename << std::endl;
+    std::cout << "\n[OK] Benchmark data successfully exported to: " << filename << std::endl;
 }
 
 int main(int argc, char* argv[]) {
     std::cout << "============================================================" << std::endl;
-    std::cout << "   minimax-parallel-benchmark: HARNESS DE BENCHMARK (Fase 1) " << std::endl;
+    std::cout << "   minimax-parallel-benchmark: BENCHMARK HARNESS (Phase 1)  " << std::endl;
     std::cout << "============================================================" << std::endl;
 
     auto simple_eval = std::make_shared<SimpleEvaluator>();
@@ -125,18 +124,18 @@ int main(int argc, char* argv[]) {
     AlphaBetaEngine ab_complex(complex_eval);
 
     std::vector<std::pair<std::string, Board>> positions = {
-        {"Apertura (Vacio)", create_opening_board()},
-        {"Medio Juego (8)",  create_midgame_board()},
-        {"Tension Tac. (14)", create_tactical_board()}
+        {"Opening (Empty)",     create_opening_board()},
+        {"Midgame (8 moves)",   create_midgame_board()},
+        {"Tactical (14 moves)", create_tactical_board()}
     };
 
     std::vector<BenchmarkRecord> records;
     records.reserve(64);
 
     for (const auto& [pos_name, board] : positions) {
-        std::cout << "\n>> Evaluando banco: " << pos_name << "..." << std::endl;
+        std::cout << "\n>> Evaluating benchmark suite: " << pos_name << "..." << std::endl;
 
-        // 1. Minimax puro (profundidades 1 a 6)
+        // 1. Pure Minimax (depths 1 to 6)
         for (int d = 1; d <= 6; ++d) {
             const auto res = mm_simple.search(board, d);
             const double ms = res.duration.count() / 1000.0;
@@ -146,7 +145,7 @@ int main(int argc, char* argv[]) {
                 "Minimax",
                 "Simple",
                 d,
-                res.best_move,
+                (res.best_move + 1), // 1-based [1, 7]
                 res.score,
                 res.nodes_visited,
                 ms,
@@ -155,7 +154,7 @@ int main(int argc, char* argv[]) {
             });
         }
 
-        // 2. Alpha-Beta con SimpleEvaluator (profundidades 1 a 9)
+        // 2. Alpha-Beta with SimpleEvaluator (depths 1 to 9)
         for (int d = 1; d <= 9; ++d) {
             const auto res = ab_simple.search(board, d);
             const double ms = res.duration.count() / 1000.0;
@@ -165,7 +164,7 @@ int main(int argc, char* argv[]) {
                 "AlphaBeta",
                 "Simple",
                 d,
-                res.best_move,
+                (res.best_move + 1), // 1-based [1, 7]
                 res.score,
                 res.nodes_visited,
                 ms,
@@ -174,7 +173,7 @@ int main(int argc, char* argv[]) {
             });
         }
 
-        // 3. Alpha-Beta con ComplexEvaluator (profundidades 1 a 9)
+        // 3. Alpha-Beta with ComplexEvaluator (depths 1 to 9)
         for (int d = 1; d <= 9; ++d) {
             const auto res = ab_complex.search(board, d);
             const double ms = res.duration.count() / 1000.0;
@@ -184,7 +183,7 @@ int main(int argc, char* argv[]) {
                 "AlphaBeta",
                 "Complex",
                 d,
-                res.best_move,
+                (res.best_move + 1), // 1-based [1, 7]
                 res.score,
                 res.nodes_visited,
                 ms,

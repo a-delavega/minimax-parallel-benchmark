@@ -14,7 +14,7 @@ using namespace mmb;
 
 void run_smoke_test() {
     std::cout << "\n============================================================" << std::endl;
-    std::cout << "               SMOKE TEST DE VERIFICACION                   " << std::endl;
+    std::cout << "               VERIFICATION SMOKE TEST                      " << std::endl;
     std::cout << "============================================================" << std::endl;
 
     Board board;
@@ -29,41 +29,41 @@ void run_smoke_test() {
 
     const int depth = 6;
 
-    std::cout << "1. MinimaxEngine (SimpleEvaluator, Profundidad " << depth << ")..." << std::endl;
+    std::cout << "1. MinimaxEngine (SimpleEvaluator, Depth " << depth << ")..." << std::endl;
     const auto res_mm = mm_simple.search(board, depth);
-    std::cout << "   Jugada: Col " << res_mm.best_move << " | Score: " << res_mm.score
-              << " | Nodos: " << res_mm.nodes_visited << " | Tiempo: " << res_mm.duration.count() << " us"
+    std::cout << "   Move: Col " << (res_mm.best_move + 1) << " | Score: " << res_mm.score
+              << " | Nodes: " << res_mm.nodes_visited << " | Time: " << res_mm.duration.count() << " us"
               << " | Throughput: " << static_cast<uint64_t>(res_mm.nodes_per_second()) << " NPS" << std::endl;
 
-    std::cout << "2. AlphaBetaEngine (SimpleEvaluator, Profundidad " << depth << ")..." << std::endl;
+    std::cout << "2. AlphaBetaEngine (SimpleEvaluator, Depth " << depth << ")..." << std::endl;
     const auto res_ab_s = ab_simple.search(board, depth);
-    std::cout << "   Jugada: Col " << res_ab_s.best_move << " | Score: " << res_ab_s.score
-              << " | Nodos: " << res_ab_s.nodes_visited << " | Tiempo: " << res_ab_s.duration.count() << " us"
+    std::cout << "   Move: Col " << (res_ab_s.best_move + 1) << " | Score: " << res_ab_s.score
+              << " | Nodes: " << res_ab_s.nodes_visited << " | Time: " << res_ab_s.duration.count() << " us"
               << " | Throughput: " << static_cast<uint64_t>(res_ab_s.nodes_per_second()) << " NPS" << std::endl;
 
-    std::cout << "3. AlphaBetaEngine (ComplexEvaluator, Profundidad " << depth << ")..." << std::endl;
+    std::cout << "3. AlphaBetaEngine (ComplexEvaluator, Depth " << depth << ")..." << std::endl;
     const auto res_ab_c = ab_complex.search(board, depth);
-    std::cout << "   Jugada: Col " << res_ab_c.best_move << " | Score: " << res_ab_c.score
-              << " | Nodos: " << res_ab_c.nodes_visited << " | Tiempo: " << res_ab_c.duration.count() << " us"
+    std::cout << "   Move: Col " << (res_ab_c.best_move + 1) << " | Score: " << res_ab_c.score
+              << " | Nodes: " << res_ab_c.nodes_visited << " | Time: " << res_ab_c.duration.count() << " us"
               << " | Throughput: " << static_cast<uint64_t>(res_ab_c.nodes_per_second()) << " NPS" << std::endl;
 
     const double reduction = 100.0 * (1.0 - static_cast<double>(res_ab_s.nodes_visited) / res_mm.nodes_visited);
-    std::cout << "\n[RESULTADO] Eficiencia de poda Alpha-Beta vs Minimax: " 
-              << std::fixed << std::setprecision(2) << reduction << "% de nodos ahorrados." << std::endl;
+    std::cout << "\n[RESULT] Alpha-Beta pruning efficiency vs Minimax: " 
+              << std::fixed << std::setprecision(2) << reduction << "% of nodes pruned." << std::endl;
 }
 
 void play_human_vs_engine(int depth = 6, bool human_starts = true, bool use_complex = true) {
     std::cout << "\n============================================================" << std::endl;
-    std::cout << "            MODO INTERACTIVO: HUMANO VS MOTOR               " << std::endl;
+    std::cout << "            INTERACTIVE MODE: HUMAN VS ENGINE               " << std::endl;
     std::cout << "============================================================" << std::endl;
 
     std::shared_ptr<IEvaluator> eval;
     if (use_complex) {
         eval = std::make_shared<ComplexEvaluator>();
-        std::cout << "Configuracion: AlphaBetaEngine con ComplexEvaluator (Profundidad " << depth << ")" << std::endl;
+        std::cout << "Configuration: AlphaBetaEngine with ComplexEvaluator (Depth " << depth << ")" << std::endl;
     } else {
         eval = std::make_shared<SimpleEvaluator>();
-        std::cout << "Configuracion: AlphaBetaEngine con SimpleEvaluator (Profundidad " << depth << ")" << std::endl;
+        std::cout << "Configuration: AlphaBetaEngine with SimpleEvaluator (Depth " << depth << ")" << std::endl;
     }
 
     AlphaBetaEngine engine(eval);
@@ -72,9 +72,9 @@ void play_human_vs_engine(int depth = 6, bool human_starts = true, bool use_comp
     const Player human_player = human_starts ? Player::Player1 : Player::Player2;
     const Player ai_player = opponent(human_player);
 
-    std::cout << "Humano juega como: " << (human_player == Player::Player1 ? "Jugador 1 [X]" : "Jugador 2 [O]") << std::endl;
-    std::cout << "Motor IA juega como: " << (ai_player == Player::Player1 ? "Jugador 1 [X]" : "Jugador 2 [O]") << std::endl;
-    std::cout << "(Escribe 'q' en cualquier momento para salir)\n" << std::endl;
+    std::cout << "Human player: " << (human_player == Player::Player1 ? "Player 1 [X]" : "Player 2 [O]") << std::endl;
+    std::cout << "AI Engine:    " << (ai_player == Player::Player1 ? "Player 1 [X]" : "Player 2 [O]") << std::endl;
+    std::cout << "(Type 'q' at any time to exit)\n" << std::endl;
 
     while (!board.is_draw() && !board.has_won(Player::Player1) && !board.has_won(Player::Player2)) {
         render_board(board);
@@ -82,34 +82,34 @@ void play_human_vs_engine(int depth = 6, bool human_starts = true, bool use_comp
         if (board.current_player == human_player) {
             bool valid_input = false;
             while (!valid_input) {
-                std::cout << "Tu turno. Selecciona columna [0-6]: ";
+                std::cout << "Your turn. Select column [1-7]: ";
                 std::string input;
                 if (!(std::cin >> input)) return;
 
                 if (input == "q" || input == "Q") {
-                    std::cout << "Partida finalizada por el usuario." << std::endl;
+                    std::cout << "Game aborted by user." << std::endl;
                     return;
                 }
 
-                if (input.length() == 1 && input[0] >= '0' && input[0] <= '6') {
-                    const Column col = input[0] - '0';
+                if (input.length() == 1 && input[0] >= '1' && input[0] <= '7') {
+                    const Column col = (input[0] - '1'); // Convert 1-based [1, 7] to 0-based [0, 6]
                     if (board.is_valid_move(col)) {
                         board.make_move(col);
                         valid_input = true;
                     } else {
-                        std::cout << ">> Columna " << col << " llena. Elige otra." << std::endl;
+                        std::cout << ">> Column " << (col + 1) << " is full. Please choose another column." << std::endl;
                     }
                 } else {
-                    std::cout << ">> Entrada invalida. Introduce un digito entre 0 y 6." << std::endl;
+                    std::cout << ">> Invalid input. Please enter a column number from 1 to 7." << std::endl;
                 }
             }
         } else {
-            std::cout << "Pensando jugada del motor..." << std::endl;
+            std::cout << "AI is searching for the best move..." << std::endl;
             const auto res = engine.search(board, depth);
-            std::cout << ">> Motor eligio Columna " << res.best_move 
+            std::cout << ">> AI played Column " << (res.best_move + 1) 
                       << " (Score: " << res.score 
-                      << ", Nodos: " << res.nodes_visited 
-                      << ", Tiempo: " << std::fixed << std::setprecision(2) << (res.duration.count() / 1000.0) << " ms"
+                      << ", Nodes: " << res.nodes_visited 
+                      << ", Time: " << std::fixed << std::setprecision(2) << (res.duration.count() / 1000.0) << " ms"
                       << ", " << static_cast<uint64_t>(res.nodes_per_second()) << " NPS)" << std::endl;
             board.make_move(res.best_move);
         }
@@ -119,15 +119,15 @@ void play_human_vs_engine(int depth = 6, bool human_starts = true, bool use_comp
 
     if (board.has_won(human_player)) {
         std::cout << "************************************************************" << std::endl;
-        std::cout << "       ¡ENHORABUENA! Has ganado la partida.                 " << std::endl;
+        std::cout << "       CONGRATULATIONS! You won the game!                   " << std::endl;
         std::cout << "************************************************************" << std::endl;
     } else if (board.has_won(ai_player)) {
         std::cout << "************************************************************" << std::endl;
-        std::cout << "       EL MOTOR IA HA GANADO LA PARTIDA.                    " << std::endl;
+        std::cout << "       THE AI ENGINE WON THE GAME.                          " << std::endl;
         std::cout << "************************************************************" << std::endl;
     } else {
         std::cout << "************************************************************" << std::endl;
-        std::cout << "       EMPATE: Tablero completo sin cuatro en raya.         " << std::endl;
+        std::cout << "       DRAW: Board is full with no four-in-a-row.           " << std::endl;
         std::cout << "************************************************************" << std::endl;
     }
 }
@@ -155,7 +155,7 @@ void play_engine_vs_engine(
 
     if (verbose) {
         std::cout << "\n============================================================" << std::endl;
-        std::cout << "                     DUELO DE MOTORES                       " << std::endl;
+        std::cout << "                     ENGINE DUEL                            " << std::endl;
         std::cout << "============================================================" << std::endl;
         std::cout << "P1 (X): " << name1 << std::endl;
         std::cout << "P2 (O): " << name2 << std::endl;
@@ -172,9 +172,9 @@ void play_engine_vs_engine(
             total_nodes1 += res.nodes_visited;
             total_time1 += res.duration;
             if (verbose) {
-                std::cout << "[Jugada " << std::setw(2) << static_cast<int>(board.moves_played) + 1 << "] P1 (X) -> Col " 
-                          << res.best_move << " | Score: " << std::setw(6) << res.score 
-                          << " | Nodos: " << std::setw(7) << res.nodes_visited 
+                std::cout << "[Move " << std::setw(2) << static_cast<int>(board.moves_played) + 1 << "] P1 (X) -> Col " 
+                          << (res.best_move + 1) << " | Score: " << std::setw(6) << res.score 
+                          << " | Nodes: " << std::setw(7) << res.nodes_visited 
                           << " | " << std::fixed << std::setprecision(2) << (res.duration.count() / 1000.0) << " ms" << std::endl;
             }
             board.make_move(res.best_move);
@@ -183,9 +183,9 @@ void play_engine_vs_engine(
             total_nodes2 += res.nodes_visited;
             total_time2 += res.duration;
             if (verbose) {
-                std::cout << "[Jugada " << std::setw(2) << static_cast<int>(board.moves_played) + 1 << "] P2 (O) -> Col " 
-                          << res.best_move << " | Score: " << std::setw(6) << res.score 
-                          << " | Nodos: " << std::setw(7) << res.nodes_visited 
+                std::cout << "[Move " << std::setw(2) << static_cast<int>(board.moves_played) + 1 << "] P2 (O) -> Col " 
+                          << (res.best_move + 1) << " | Score: " << std::setw(6) << res.score 
+                          << " | Nodes: " << std::setw(7) << res.nodes_visited 
                           << " | " << std::fixed << std::setprecision(2) << (res.duration.count() / 1000.0) << " ms" << std::endl;
             }
             board.make_move(res.best_move);
@@ -196,16 +196,16 @@ void play_engine_vs_engine(
         render_board(board);
         std::cout << "============================================================" << std::endl;
         if (board.has_won(Player::Player1)) {
-            std::cout << "RESULTADO FINAL: GANADOR -> " << name1 << std::endl;
+            std::cout << "FINAL RESULT: WINNER -> " << name1 << std::endl;
         } else if (board.has_won(Player::Player2)) {
-            std::cout << "RESULTADO FINAL: GANADOR -> " << name2 << std::endl;
+            std::cout << "FINAL RESULT: WINNER -> " << name2 << std::endl;
         } else {
-            std::cout << "RESULTADO FINAL: EMPATE" << std::endl;
+            std::cout << "FINAL RESULT: DRAW" << std::endl;
         }
-        std::cout << "Jugadas totales: " << static_cast<int>(board.moves_played) << std::endl;
-        std::cout << "Stats P1 (X): " << total_nodes1 << " nodos en " 
+        std::cout << "Total moves played: " << static_cast<int>(board.moves_played) << std::endl;
+        std::cout << "Stats P1 (X): " << total_nodes1 << " nodes in " 
                   << std::fixed << std::setprecision(2) << (total_time1.count() / 1000.0) << " ms" << std::endl;
-        std::cout << "Stats P2 (O): " << total_nodes2 << " nodos en " 
+        std::cout << "Stats P2 (O): " << total_nodes2 << " nodes in " 
                   << std::fixed << std::setprecision(2) << (total_time2.count() / 1000.0) << " ms" << std::endl;
         std::cout << "============================================================" << std::endl;
     }
@@ -213,11 +213,11 @@ void play_engine_vs_engine(
 
 void play_engine_match(int games = 6) {
     std::cout << "\n============================================================" << std::endl;
-    std::cout << "       TORNEO DE MOTORES: COMPLEX EVAL vs RAW DEPTH         " << std::endl;
+    std::cout << "       ENGINE TOURNAMENT: COMPLEX EVAL vs RAW DEPTH         " << std::endl;
     std::cout << "============================================================" << std::endl;
-    std::cout << "Estrategia A: AlphaBeta + ComplexEvaluator (d = 6)" << std::endl;
-    std::cout << "Estrategia B: AlphaBeta + SimpleEvaluator  (d = 8)" << std::endl;
-    std::cout << "Total de partidas: " << games << " (alternando primer movimiento)\n" << std::endl;
+    std::cout << "Strategy A: AlphaBeta + ComplexEvaluator (d = 6)" << std::endl;
+    std::cout << "Strategy B: AlphaBeta + SimpleEvaluator  (d = 8)" << std::endl;
+    std::cout << "Total games: " << games << " (alternating first player)\n" << std::endl;
 
     int wins_a = 0, wins_b = 0, draws = 0;
 
@@ -230,11 +230,11 @@ void play_engine_match(int games = 6) {
         AlphaBetaEngine engine_a(eval_a);
         AlphaBetaEngine engine_b(eval_b);
 
-        std::cout << "Partida " << g << "/" << games << ": ";
+        std::cout << "Game " << g << "/" << games << ": ";
         if (a_is_p1) {
-            std::cout << "Estrategia A es P1 [X], Estrategia B es P2 [O] -> ";
+            std::cout << "Strategy A is P1 [X], Strategy B is P2 [O] -> ";
         } else {
-            std::cout << "Estrategia B es P1 [X], Estrategia A es P2 [O] -> ";
+            std::cout << "Strategy B is P1 [X], Strategy A is P2 [O] -> ";
         }
 
         while (!board.is_draw() && !board.has_won(Player::Player1) && !board.has_won(Player::Player2)) {
@@ -250,47 +250,47 @@ void play_engine_match(int games = 6) {
         if (board.has_won(Player::Player1)) {
             if (a_is_p1) {
                 wins_a++;
-                std::cout << "Gana Estrategia A [X] en " << static_cast<int>(board.moves_played) << " jugadas" << std::endl;
+                std::cout << "Strategy A [X] wins in " << static_cast<int>(board.moves_played) << " moves" << std::endl;
             } else {
                 wins_b++;
-                std::cout << "Gana Estrategia B [X] en " << static_cast<int>(board.moves_played) << " jugadas" << std::endl;
+                std::cout << "Strategy B [X] wins in " << static_cast<int>(board.moves_played) << " moves" << std::endl;
             }
         } else if (board.has_won(Player::Player2)) {
             if (a_is_p1) {
                 wins_b++;
-                std::cout << "Gana Estrategia B [O] en " << static_cast<int>(board.moves_played) << " jugadas" << std::endl;
+                std::cout << "Strategy B [O] wins in " << static_cast<int>(board.moves_played) << " moves" << std::endl;
             } else {
                 wins_a++;
-                std::cout << "Gana Estrategia A [O] en " << static_cast<int>(board.moves_played) << " jugadas" << std::endl;
+                std::cout << "Strategy A [O] wins in " << static_cast<int>(board.moves_played) << " moves" << std::endl;
             }
         } else {
             draws++;
-            std::cout << "Empate en 42 jugadas" << std::endl;
+            std::cout << "Draw in 42 moves" << std::endl;
         }
     }
 
     std::cout << "\n============================================================" << std::endl;
-    std::cout << "                  MARCADOR DEL TORNEO                       " << std::endl;
+    std::cout << "                  TOURNAMENT SCOREBOARD                     " << std::endl;
     std::cout << "============================================================" << std::endl;
-    std::cout << "Estrategia A (Complex d=6): " << wins_a << " victorias" << std::endl;
-    std::cout << "Estrategia B (Simple  d=8): " << wins_b << " victorias" << std::endl;
-    std::cout << "Empates:                   " << draws << std::endl;
+    std::cout << "Strategy A (Complex d=6): " << wins_a << " wins" << std::endl;
+    std::cout << "Strategy B (Simple  d=8): " << wins_b << " wins" << std::endl;
+    std::cout << "Draws:                   " << draws << std::endl;
     std::cout << "============================================================" << std::endl;
 }
 
 void print_help(const char* prog) {
-    std::cout << "Uso: " << prog << " [opciones]\n\n"
-              << "Opciones disponibles:\n"
-              << "  -s, --smoke       Ejecuta el smoke test de verificacion inicial\n"
-              << "  -h, --human       Inicia partida interactiva Humano vs Motor\n"
-              << "  -d, --duel        Ejecuta un duelo de una partida entre motores\n"
-              << "  -m, --match [N]   Ejecuta un match de N partidas alternadas (defecto: 6)\n"
-              << "  --help            Muestra esta ayuda\n"
-              << "\nSin argumentos, se abre el menu interactivo de consola." << std::endl;
+    std::cout << "Usage: " << prog << " [options]\n\n"
+              << "Available options:\n"
+              << "  -s, --smoke       Run verification smoke test\n"
+              << "  -h, --human       Start interactive Human vs Engine game\n"
+              << "  -d, --duel        Run a single-game duel between engines\n"
+              << "  -m, --match [N]   Run an automated match of N alternating games (default: 6)\n"
+              << "  --help            Show this help message\n"
+              << "\nWithout arguments, opens the interactive console menu." << std::endl;
 }
 
 int main(int argc, char* argv[]) {
-    std::cout << "=== minimax-parallel-benchmark: CLI Suite (Fase 1) ===" << std::endl;
+    std::cout << "=== minimax-parallel-benchmark: CLI Suite (Phase 1) ===" << std::endl;
 
     if (argc > 1) {
         const std::string arg = argv[1];
@@ -320,7 +320,7 @@ int main(int argc, char* argv[]) {
             print_help(argv[0]);
             return 0;
         }
-        std::cerr << "Opcion no reconocida: " << arg << "\n" << std::endl;
+        std::cerr << "Unrecognized option: " << arg << "\n" << std::endl;
         print_help(argv[0]);
         return 1;
     }
@@ -328,13 +328,13 @@ int main(int argc, char* argv[]) {
     // Interactive Menu
     while (true) {
         std::cout << "\n------------------------------------------------------------\n"
-                  << "Selecciona una opcion:\n"
-                  << "  [1] Jugar contra la Maquina (Humano vs Motor AlphaBeta)\n"
-                  << "  [2] Duelo entre Motores (ComplexEval d=6 vs RawDepth d=8)\n"
-                  << "  [3] Torneo Automatizado de 6 partidas alternadas\n"
-                  << "  [4] Smoke Test de Telemetria\n"
-                  << "  [0] Salir\n"
-                  << "Opcion: ";
+                  << "Select an option:\n"
+                  << "  [1] Play against the AI Engine (Human vs AlphaBeta)\n"
+                  << "  [2] Engine Duel (ComplexEval d=6 vs RawDepth d=8)\n"
+                  << "  [3] Automated Tournament of 6 alternating games\n"
+                  << "  [4] Telemetry Smoke Test\n"
+                  << "  [0] Exit\n"
+                  << "Choice: ";
         
         std::string choice;
         if (!(std::cin >> choice)) break;
@@ -348,10 +348,10 @@ int main(int argc, char* argv[]) {
         } else if (choice == "4") {
             run_smoke_test();
         } else if (choice == "0" || choice == "q" || choice == "Q") {
-            std::cout << "Saliendo del programa..." << std::endl;
+            std::cout << "Exiting program..." << std::endl;
             break;
         } else {
-            std::cout << ">> Opcion no valida." << std::endl;
+            std::cout << ">> Invalid choice. Please try again." << std::endl;
         }
     }
 
