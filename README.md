@@ -1,6 +1,37 @@
 # minimax-parallel-benchmark
 
-High-performance computing (HPC) research repository benchmarking **Parallel Minimax (Lazy SMP)** against pure **Sequential Alpha-Beta Pruning** and heavy evaluation heuristics on dense decision trees using **Connect 4**.
+<p align="center">
+  <strong>High-Performance Computing (HPC) research repository evaluating CPU-bound parallel game-tree search against sequential Alpha-Beta pruning and heavy heuristics.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/a-delavega/minimax-parallel-benchmark/releases"><img src="https://img.shields.io/github/v/release/a-delavega/minimax-parallel-benchmark?color=blue&label=version" alt="Latest Release"></a>
+  <img src="https://img.shields.io/badge/standard-C%2B%2B20-blue.svg" alt="C++20">
+  <img src="https://img.shields.io/badge/build-CMake%203.25+-informational.svg" alt="CMake">
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey.svg" alt="Platform">
+  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
+</p>
+
+---
+
+## 📖 Executive Summary & Motivation
+
+In zero-sum game-tree search (such as Minimax with **Alpha-Beta ($\alpha$-$\beta$) pruning**), a long-standing architectural tension exists between two primary paradigms:
+
+1. **Raw Depth (Brute Force):** Utilizing ultra-fast, trivial leaf evaluators ($O(1)$) to maximize node traversal speed and penetrate deep tactical horizons.
+2. **Knowledge-Heavy (Complex Heuristics):** Sacrificing search depth in exchange for dense positional analysis, pattern recognition, and threat detection.
+
+However, modern multicore CPU architectures with deep memory hierarchies (L1/L2/L3 cache) present a third, far more potent alternative: **massive parallel search**. 
+
+Because standard Alpha-Beta pruning is inherently sequential and state-dependent (branches cannot be pruned without knowledge of bounds discovered by sibling explorations), classic parallelization schemes like mutex-guarded search trees or *Principal Variation Split* often degrade due to cache-line bouncing and lock contention.
+
+**`minimax-parallel-benchmark`** provides an empirical, reproducible testbed designed to demonstrate how hardware-oriented parallel algorithms—specifically **Lazy SMP (Symmetric Multiprocessing)** coupled with **lockless Transposition Tables** and **Zobrist Hashing**—can decisively outscale both sequential Alpha-Beta and compute-heavy evaluation heuristics.
+
+### The Research Testbed: Connect 4
+Connect 4 offers the ideal experimental characteristics for this benchmark:
+- **Dense State Space:** Approximately $4.5 \times 10^{12}$ valid game positions.
+- **Moderate Branching Factor ($b \le 7$):** Allows the search tree to reliably reach deep plies ($d \ge 12$), where cache locality, synchronization overhead, and tree pruning efficiency become performance-critical.
+- **Compact Bitboard Encoding:** A full $7 \times 6$ board fits into registers and cache lines, eliminating RAM access latency and isolating pure CPU compute efficiency.
 
 ---
 
@@ -17,7 +48,7 @@ High-performance computing (HPC) research repository benchmarking **Parallel Min
 
 ---
 
-## 📌 Project Architecture
+## 📌 Architectural Flow
 
 ```mermaid
 flowchart LR
@@ -80,8 +111,8 @@ has_won = (mask & (mask >> (2 * d))) != 0
 ## ⚡ Thread-Safety & Memory Footprint
 
 - `sizeof(Board)` is **32 bytes**, fitting easily within a single L1 cache line (typically 64 bytes).
-- Zero heap allocations (`malloc`/`new`).
-- Completely self-contained: each search worker in Phase 2 can copy the board by value directly into registers/stack without mutex synchronization.
+- **Zero heap allocations** (`malloc`/`new`) on the search hot-path.
+- **Trivially copyable:** Each parallel search thread in Phase 2 receives its own local board instance on the stack/registers, avoiding mutex synchronization and memory contention entirely during recursive tree walks.
 
 ---
 
@@ -92,25 +123,29 @@ The project requires a **C++20** compliant compiler and **CMake 3.25+**.
 ### Linux / WSL (GCC 11+ / Clang 13+)
 
 ```bash
+# Configure and build
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 
-# Run the smoke test
-./build/mmb_runner
+# Run test suite
+ctest --test-dir build --output-on-failure
 
-# Run the board visualizer tool
-./build/tools/pretty_print
+# Run interactive terminal UI
+./build/mmb_runner
 ```
 
 ### Windows (MSVC 2022)
 
 ```powershell
+# Configure and build
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 
-# Run executables
+# Run test suite
+ctest --test-dir build -C Release --output-on-failure
+
+# Run interactive terminal UI
 .\build\Release\mmb_runner.exe
-.\build\tools\Release\pretty_print.exe
 ```
 
 ### CMake Options
@@ -118,11 +153,11 @@ cmake --build build --config Release
 | Flag | Default | Description |
 |---|---|---|
 | `MMB_BUILD_TOOLS` | `ON` | Build CLI debug visualizer (`pretty_print`) |
-| `MMB_BUILD_TESTS` | `OFF` | Build unit test suite (Catch2 / GTest) |
+| `MMB_BUILD_TESTS` | `OFF` | Build Catch2 unit test suite |
 | `MMB_BUILD_BENCHMARKS` | `OFF` | Build Google Benchmark microbenchmarks |
 
 ---
 
 ## 📄 License
 
-MIT License. See `LICENSE` for details.
+MIT License. See [LICENSE](LICENSE) for details.
