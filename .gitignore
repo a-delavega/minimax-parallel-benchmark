@@ -20,5 +20,9 @@ CMakeFiles/
 cmake_install.cmake
 Makefile
 
+# Generated benchmark results
+*.csv
+*.tsv
+
 # Local docs and notes
 docs/
