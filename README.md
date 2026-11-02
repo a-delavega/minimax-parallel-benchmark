@@ -16,9 +16,9 @@
 
 ## 📖 Executive Summary & Motivation
 
-In zero-sum game-tree search (such as Minimax with **Alpha-Beta (alpha-beta) pruning**), a long-standing architectural tension exists between two primary paradigms:
+In zero-sum game-tree search (such as Minimax with **Alpha-Beta (α-β) pruning**), a long-standing architectural tension exists between two primary paradigms:
 
-1. **Raw Depth (Brute Force):** Utilizing ultra-fast, trivial leaf evaluators (`O(1)`) to maximize node traversal speed and penetrate deep tactical horizons.
+1. **Raw Depth (Brute Force):** Utilizing ultra-fast, trivial leaf evaluators (𝒪(1)) to maximize node traversal speed and penetrate deep tactical horizons.
 2. **Knowledge-Heavy (Complex Heuristics):** Sacrificing search depth in exchange for dense positional analysis, pattern recognition, and threat detection.
 
 However, modern multicore CPU architectures with deep memory hierarchies (L1/L2/L3 cache) present a third, far more potent alternative: **massive parallel search**. 
@@ -29,9 +29,9 @@ Because standard Alpha-Beta pruning is inherently sequential and state-dependent
 
 ### The Research Testbed: Connect 4
 Connect 4 offers the ideal experimental characteristics for this benchmark:
-- **Dense State Space:** Approximately 4.5 x 10^12 valid game positions.
-- **Moderate Branching Factor (`b <= 7`):** Allows the search tree to reliably reach deep plies (`d >= 12`), where cache locality, synchronization overhead, and tree pruning efficiency become performance-critical.
-- **Compact Bitboard Encoding:** A full 7x6 board fits into registers and cache lines, eliminating RAM access latency and isolating pure CPU compute efficiency.
+- **Dense State Space:** Approximately 4.5 × 10¹² valid game positions.
+- **Moderate Branching Factor (𝑏 ≤ 7):** Allows the search tree to reliably reach deep plies (𝑑 ≥ 12), where cache locality, synchronization overhead, and tree pruning efficiency become performance-critical.
+- **Compact Bitboard Encoding:** A full 7 × 6 board fits into registers and cache lines, eliminating RAM access latency and isolating pure CPU compute efficiency.
 
 ---
 
@@ -39,9 +39,9 @@ Connect 4 offers the ideal experimental characteristics for this benchmark:
 
 | Phase | Milestone | Tag / Release | Status | Key Highlights |
 | :--- | :--- | :---: | :---: | :--- |
-| **Phase 0** | **Setup & Bitboard Core** | [`v0.1.0-phase0`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.1.0-phase0) | ✅ Complete | 32-byte Bitboard, O(1) shifts, row-6 sentinel bits, CMake C++20 |
+| **Phase 0** | **Setup & Bitboard Core** | [`v0.1.0-phase0`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.1.0-phase0) | ✅ Complete | 32-byte Bitboard, 𝒪(1) shifts, row-6 sentinel bits, CMake C++20 |
 | **Phase 1** | **Sequential Engine & Heuristics** | [`v0.2.0-phase1`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.2.0-phase1) | ✅ Complete | Minimax vs Alpha-Beta, ComplexEvaluator, Catch2 tests, Benchmarks |
-| **Phase 2** | **Lazy SMP Concurrency (Core)** | `v0.3.0-phase2` | ⏳ Up Next | Multi-threaded search sharing [alpha, beta] windows via `std::thread` |
+| **Phase 2** | **Lazy SMP Concurrency (Core)** | `v0.3.0-phase2` | ⏳ Up Next | Multi-threaded search sharing [α, β] windows via `std::thread` |
 | **Phase 3** | **Game Theory & Suboptimal Opponents** | `v0.4.0-phase3` | 📅 Planned | Exploitative pruning against erratic agents |
 | **Phase 4** | **Transposition Tables & Zobrist Hash** | `v0.5.0-phase4` | 📅 Planned | Lock-free concurrent hash table to eliminate transpositions |
 | **Phase 5** | **Real-Time Control & Iterative Deepening** | `v0.6.0-phase5` | 📅 Planned | Strict 50ms deadlines & dynamic time management |
