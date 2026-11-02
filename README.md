@@ -4,25 +4,29 @@ High-performance computing (HPC) research repository benchmarking **Parallel Min
 
 ---
 
-## 📌 Project Vision & Roadmap
+## 🚦 Roadmap & Implementation Status
 
-The primary goal of this research is to evaluate CPU-bound parallel game-tree search strategies, analyzing thread scalability, cache utilization, and transposition table efficiency.
+| Phase | Milestone | Tag / Release | Status | Key Highlights |
+| :--- | :--- | :---: | :---: | :--- |
+| **Phase 0** | **Setup & Bitboard Core** | [`v0.1.0-phase0`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.1.0-phase0) | ✅ Complete | 32-byte Bitboard, $O(1)$ shifts, row-6 sentinel bits, CMake C++20 |
+| **Phase 1** | **Sequential Engine & Heuristics** | [`v0.2.0-phase1`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.2.0-phase1) | ✅ Complete | Minimax vs Alpha-Beta, ComplexEvaluator, Catch2 tests, Benchmarks |
+| **Phase 2** | **Lazy SMP Concurrency (Core)** | `v0.3.0-phase2` | ⏳ Up Next | Multi-threaded search sharing $[\alpha, \beta]$ windows via `std::thread` |
+| **Phase 3** | **Game Theory & Suboptimal Opponents** | `v0.4.0-phase3` | 📅 Planned | Exploitative pruning against erratic agents |
+| **Phase 4** | **Transposition Tables & Zobrist Hash** | `v0.5.0-phase4` | 📅 Planned | Lock-free concurrent hash table to eliminate transpositions |
+| **Phase 5** | **Real-Time Control & Iterative Deepening** | `v0.6.0-phase5` | 📅 Planned | Strict 50ms deadlines & dynamic time management |
+
+---
+
+## 📌 Project Architecture
 
 ```mermaid
 flowchart LR
-    A["Phase 0<br/><b>Bitboard Setup</b><br/>(Current)"] --> B["Phase 1<br/><b>Sequential Engine</b><br/>Raw Depth vs Complex Eval"]
-    B --> C["Phase 2<br/><b>Lazy SMP</b><br/>Multi-threaded Search"]
-    C --> D["Phase 3<br/><b>Game Theory</b><br/>Suboptimal Opponents"]
-    D --> E["Phase 4<br/><b>Transposition Tables</b><br/>Lockless Zobrist Hash"]
-    E --> F["Phase 5<br/><b>Real-Time</b><br/>Iterative Deepening"]
+    A["Phase 0<br/><b>Bitboard Setup</b><br/>✅ v0.1.0"] --> B["Phase 1<br/><b>Sequential Engine</b><br/>✅ v0.2.0"]
+    B --> C["Phase 2<br/><b>Lazy SMP</b><br/>⏳ Next"]
+    C --> D["Phase 3<br/><b>Game Theory</b><br/>📅 Planned"]
+    D --> E["Phase 4<br/><b>Transposition Tables</b><br/>📅 Planned"]
+    E --> F["Phase 5<br/><b>Real-Time</b><br/>📅 Planned"]
 ```
-
-- **Phase 0 (Setup & Bitboard Core)**: High-performance 64-bit Bitboard representation, $O(1)$ move generation and win detection, cross-platform CMake build system.
-- **Phase 1 (Sequential Engine)**: Minimax with Alpha-Beta pruning; empirical comparison between raw search depth with trivial evaluation vs. shallow search with heavy pattern heuristics.
-- **Phase 2 (Lazy SMP - The Core)**: Multi-threaded tree search sharing Alpha-Beta search windows via `std::thread` without mutex contention on the hot path.
-- **Phase 3 (Game Theory & Adaptability)**: Exploitative adjustments against suboptimal or erratic opponents.
-- **Phase 4 (Memory & Caching)**: Lock-free Transposition Tables backed by Zobrist Hashing to prune transposed game states across threads.
-- **Phase 5 (Real-Time Control)**: Iterative Deepening search bounded by strict time limits (e.g., 50ms deadlines).
 
 ---
 
