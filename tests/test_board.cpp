@@ -138,3 +138,44 @@ TEST_CASE("Board: Sentinel Isolation Across Column Boundaries", "[board]") {
     // Must NOT detect any win across boundary
     REQUIRE_FALSE(Board::has_won(board.bitboard[0]));
 }
+
+TEST_CASE("Board: Unmake Move Reversibility", "[board]") {
+    Board original;
+    original.make_move(3);
+    original.make_move(2);
+
+    Board copy = original;
+    // Make move in column 4
+    copy.make_move(4);
+    REQUIRE(copy != original);
+    REQUIRE(copy.moves_played == 3);
+
+    // Unmake move in column 4
+    copy.unmake_move(4);
+    REQUIRE(copy == original);
+    REQUIRE(copy.moves_played == 2);
+    REQUIRE(copy.current_player == original.current_player);
+    REQUIRE(copy.height[4] == original.height[4]);
+    REQUIRE(copy.bitboard[0] == original.bitboard[0]);
+    REQUIRE(copy.bitboard[1] == original.bitboard[1]);
+}
+
+TEST_CASE("Board: Is Winning Move Detection", "[board]") {
+    Board board;
+    // Setup 3 horizontal pieces for Player 1 (cols 0, 1, 2)
+    board.make_move(0); // P1
+    board.make_move(6); // P2
+    board.make_move(1); // P1
+    board.make_move(6); // P2
+    board.make_move(2); // P1
+    board.make_move(6); // P2
+
+    // Now it's P1's turn. Col 3 should be detected as winning move in O(1)!
+    REQUIRE(board.is_winning_move(3));
+    REQUIRE_FALSE(board.is_winning_move(0));
+    REQUIRE_FALSE(board.is_winning_move(4));
+
+    // Also verify from opponent perspective: Col 3 is winning move for P1
+    REQUIRE(board.is_winning_move_for(Player::Player1, 3));
+    REQUIRE_FALSE(board.is_winning_move_for(Player::Player2, 3));
+}

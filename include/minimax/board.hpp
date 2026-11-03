@@ -93,6 +93,17 @@ struct Board {
     }
 
     /**
+     * @brief Reverts the previous move played in the given column in O(1).
+     * @param col Column where the last piece was placed.
+     */
+    constexpr void unmake_move(Column col) noexcept {
+        current_player = opponent(current_player);
+        moves_played--;
+        const uint64_t move_mask = 1ULL << (--height[col]);
+        bitboard[static_cast<uint8_t>(current_player)] &= ~move_mask;
+    }
+
+    /**
      * @brief Checks if a bitboard has 4 connected pieces in O(1).
      * 
      * Uses bit shifts with sentinel-bit protection:
@@ -129,11 +140,34 @@ struct Board {
     }
 
     /**
+     * @brief Checks in O(1) if placing a piece in col produces an immediate win for player.
+     * @param player Target player to test.
+     * @param col Candidate column [0, 6].
+     */
+    [[nodiscard]] constexpr bool is_winning_move_for(Player player, Column col) const noexcept {
+        if (!is_valid_move(col)) return false;
+        const uint64_t move_mask = 1ULL << height[col];
+        return has_won(bitboard[static_cast<uint8_t>(player)] | move_mask);
+    }
+
+    /**
+     * @brief Checks in O(1) if placing a piece in col produces an immediate win for the current player.
+     * @param col Candidate column [0, 6].
+     */
+    [[nodiscard]] constexpr bool is_winning_move(Column col) const noexcept {
+        return is_winning_move_for(current_player, col);
+    }
+
+    /**
      * @brief Checks if the game ended in a draw (board full without winner).
      */
     [[nodiscard]] constexpr bool is_draw() const noexcept {
         return moves_played >= (ROWS * COLS);
     }
+
+    // Default C++20 equality comparisons
+    bool operator==(const Board&) const = default;
+    bool operator!=(const Board&) const = default;
 };
 
 } // namespace mmb
