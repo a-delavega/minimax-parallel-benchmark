@@ -34,7 +34,9 @@ flowchart TD
 
 The physical Connect 4 board consists of 7 columns and 6 rows (42 cells). Rather than allocating 6 bits per column, the engine uses **7 bits per column**, dedicating row 6 permanently as a **sentinel bit**:
 
-$$\text{bit\_index} = \text{column} \times 7 + \text{row}$$
+```text
+bit_index = column * 7 + row
+```
 
 ```text
   Col:    0     1     2     3     4     5     6

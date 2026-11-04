@@ -37,9 +37,13 @@ flowchart TD
 Zero-overhead polymorphic interfaces defined in `include/minimax/`:
 - **`SearchResult` (`search_result.hpp`)**: Telemetry record capturing `best_move`, `score`, `nodes_visited`, `duration` ($\mu s$), `depth_reached`, and calculated throughput $\text{NPS} = \frac{N}{T_{\text{sec}}}$.
 - **`IEvaluator` (`evaluator.hpp`)**: Abstract evaluation interface with perspective discounting:
-  $$\text{Score } \text{evaluate}( \text{const Board\&}, \text{Player pov}, \text{int depth} )$$
+  ```cpp
+  Score evaluate(const Board& board, Player pov, int depth = 0);
+  ```
 - **`IEngine` (`engine.hpp`)**: Abstract search engine interface:
-  $$\text{SearchResult } \text{search}( \text{const Board\&}, \text{int max\_depth} )$$
+  ```cpp
+  SearchResult search(const Board& board, int max_depth);
+  ```
 
 ### 2.2 Subphase 1.2 & Optimization: Static & Tactical Move Ordering (`MoveOrderer`)
 The efficiency of Alpha-Beta pruning depends critically on the move ordering:
@@ -48,7 +52,9 @@ The efficiency of Alpha-Beta pruning depends critically on the move ordering:
 
 #### Center-Outward Heuristic
 In Connect 4, column 3 (center) participates in up to **16 distinct 4-in-a-row winning lines**, while outer columns 0 and 6 only participate in **7**. By default, legal candidate columns are evaluated in the order:
-$$\text{ORDERED\_COLUMNS} = [3, 2, 4, 1, 5, 0, 6]$$
+```text
+ORDERED_COLUMNS = [3, 2, 4, 1, 5, 0, 6]
+```
 
 #### Tactical Move Prioritization in $\mathcal{O}(1)$
 `MoveOrderer` was extended with instantaneous threat scanning:
