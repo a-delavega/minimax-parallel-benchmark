@@ -165,9 +165,13 @@ struct Board {
         return moves_played >= (ROWS * COLS);
     }
 
-    // Default C++20 equality comparisons
-    bool operator==(const Board&) const = default;
-    bool operator!=(const Board&) const = default;
+    [[nodiscard]] bool operator==(const Board& other) const noexcept {
+        return bitboard[0] == other.bitboard[0] &&
+               bitboard[1] == other.bitboard[1] &&
+               height == other.height &&
+               moves_played == other.moves_played &&
+               current_player == other.current_player;
+    }
 };
 
 } // namespace mmb
