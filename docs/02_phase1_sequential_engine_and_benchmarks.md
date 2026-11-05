@@ -144,6 +144,17 @@ A standalone benchmarking executable testing three standard benchmark positions:
 | **AlphaBeta (Complex)**| 8 | Col 3 | 99,993 | 5,256 | 0.41 ms | 12.9M | **2.92** |
 | **AlphaBeta (Complex)**| 9 | Col 3 | 99,993 | 16,075 | 1.43 ms | 11.3M | **2.93** |
 
+### 3.2 Visual Performance Analytics
+
+The benchmark results generated from `benchmark_phase1_results.csv` are visualized below:
+
+![Phase 1 Benchmark Performance Dashboard](assets/plots/phase1_benchmark_dashboard.png)
+
+Individual detailed charts:
+- **Search Space Reduction (Log Scale):** [nodes_explored_log_scale.png](assets/plots/nodes_explored_log_scale.png)
+- **Branching Factor Convergence:** [effective_branching_factor.png](assets/plots/effective_branching_factor.png)
+- **Evaluator Throughput (NPS):** [throughput_nps.png](assets/plots/throughput_nps.png)
+
 ---
 
 ## 4. Key Scientific Insights

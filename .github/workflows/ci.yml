@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "Linux (GCC C++20)"
+            os: ubuntu-latest
+            c_compiler: gcc
+            cpp_compiler: g++
+            build_type: Release
+
+          - name: "Linux (Clang C++20)"
+            os: ubuntu-latest
+            c_compiler: clang
+            cpp_compiler: clang++
+            build_type: Release
+
+          - name: "Windows (MSVC C++20)"
+            os: windows-latest
+            c_compiler: cl
+            cpp_compiler: cl
+            build_type: Release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Ninja (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure CMake
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DMMB_BUILD_TESTS=ON
+          -DMMB_BUILD_TOOLS=ON
+          -DMMB_BUILD_BENCHMARKS=ON
+        env:
+          CC: ${{ matrix.c_compiler }}
+          CXX: ${{ matrix.cpp_compiler }}
+
+      - name: Build Targets
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel
+
+      - name: Run Catch2 Unit Tests
+        run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
+
+      - name: Run Telemetry Smoke Test
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ./build/${{ matrix.build_type }}/mmb_runner.exe --smoke
+          else
+            ./build/mmb_runner --smoke
+          fi
+        shell: bash

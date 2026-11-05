@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
     minimax-parallel-benchmark
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "HPC research: Parallel Minimax vs Sequential Alpha-Beta in Connect 4"
     LANGUAGES CXX
 )
@@ -77,7 +77,7 @@ if(MMB_BUILD_TOOLS)
 endif()
 
 # ============================================================
-# Tests (Placeholder for Phase 1)
+# Tests (Catch2 Suite)
 # ============================================================
 if(MMB_BUILD_TESTS)
     enable_testing()
