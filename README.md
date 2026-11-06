@@ -144,6 +144,9 @@ ctest --test-dir build --output-on-failure
 
 # Run interactive terminal UI
 ./build/mmb_runner
+
+# Run CPU instruction microbenchmark
+./build/benchmarks/mmb_micro_benchmark
 ```
 
 ### Windows (MSVC 2022)
@@ -158,6 +161,9 @@ ctest --test-dir build -C Release --output-on-failure
 
 # Run interactive terminal UI
 .\build\Release\mmb_runner.exe
+
+# Run CPU instruction microbenchmark
+.\build\benchmarks\Release\mmb_micro_benchmark.exe
 ```
 
 ### CMake Options
@@ -166,7 +172,7 @@ ctest --test-dir build -C Release --output-on-failure
 |---|---|---|
 | `MMB_BUILD_TOOLS` | `ON` | Build CLI debug visualizer (`pretty_print`) |
 | `MMB_BUILD_TESTS` | `ON` | Build Catch2 unit test suite (`mmb_tests`) |
-| `MMB_BUILD_BENCHMARKS` | `ON` | Build sequential microbenchmark suite (`mmb_benchmark`) |
+| `MMB_BUILD_BENCHMARKS` | `ON` | Build search benchmarks (`mmb_benchmark`) & CPU microbenchmarks (`mmb_micro_benchmark`) |
 
 ---
 
@@ -186,6 +192,19 @@ To regenerate the high-resolution charts from `benchmark_phase1_results.csv`:
 ```bash
 python scripts/plot_benchmarks.py
 ```
+
+### CPU Instruction Microbenchmarks (`mmb_micro_benchmark`)
+
+Low-level hardware latency and throughput measured across 10M operations:
+
+| Microbenchmark Target | Operations | Latency (ns) | Throughput | Notes |
+| :--- | :---: | :---: | :---: | :--- |
+| `Board::has_won` (No Win) | 10,000,000 | **~5.5 ns** | **180 MOps/s** | Branchless 4-way diagonal/axial check |
+| `Board::has_won` (Win) | 10,000,000 | **~3.2 ns** | **310 MOps/s** | Early exit bitmask bit-shift |
+| `Board::make + unmake_move` | 20,000,000 | **~3.5 ns** | **285 MOps/s** | Zero-allocation stack state mutation |
+| `Board::is_winning_move` | 10,000,000 | **~3.4 ns** | **295 MOps/s** | 1-ply tactical lookahead mask |
+| `SimpleEvaluator::evaluate` | 10,000,000 | **~4.2 ns** | **235 MOps/s** | Pure $\mathcal{O}(1)$ terminal distance discounting |
+| `ComplexEvaluator::evaluate` | 2,000,000 | **~66.7 ns** | **15 MOps/s** | 3-in-a-row threat masks + column parity |
 
 ---
 

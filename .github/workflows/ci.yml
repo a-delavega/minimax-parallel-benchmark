@@ -65,3 +65,12 @@ jobs:
             ./build/mmb_runner --smoke
           fi
         shell: bash
+
+      - name: Run Microbenchmark Smoke Test
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ./build/benchmarks/${{ matrix.build_type }}/mmb_micro_benchmark.exe --quick
+          else
+            ./build/benchmarks/mmb_micro_benchmark --quick
+          fi
+        shell: bash
