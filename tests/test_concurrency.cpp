@@ -48,8 +48,9 @@ TEST_CASE("Concurrency: SharedSearchState Lock-Free Operations", "[concurrency][
 
     SECTION("Initial state is clean") {
         REQUIRE_FALSE(shared.should_stop());
-        REQUIRE(shared.global_best_move.load() == -1);
-        REQUIRE(shared.global_best_score.load() == std::numeric_limits<Score>::lowest());
+        REQUIRE(shared.best_move() == -1);
+        REQUIRE(shared.best_score() == std::numeric_limits<Score>::lowest());
+        REQUIRE(shared.best_depth() == 0);
         REQUIRE(shared.completed_workers.load() == 0);
     }
 
@@ -62,23 +63,30 @@ TEST_CASE("Concurrency: SharedSearchState Lock-Free Operations", "[concurrency][
         REQUIRE_FALSE(shared.should_stop());
     }
 
-    SECTION("Concurrent opportunistic update_best chooses the maximum score") {
+    SECTION("Concurrent opportunistic update_best chooses the maximum score and depth") {
         shared.reset();
 
-        // Sequential verification
-        REQUIRE(shared.update_best(3, 100));
-        REQUIRE(shared.global_best_move.load() == 3);
-        REQUIRE(shared.global_best_score.load() == 100);
+        // Sequential verification at depth 4
+        REQUIRE(shared.update_best(3, 100, 4));
+        REQUIRE(shared.best_move() == 3);
+        REQUIRE(shared.best_score() == 100);
+        REQUIRE(shared.best_depth() == 4);
 
-        // Lower score does not overwrite
-        REQUIRE_FALSE(shared.update_best(2, 50));
-        REQUIRE(shared.global_best_move.load() == 3);
-        REQUIRE(shared.global_best_score.load() == 100);
+        // Lower score at same depth does not overwrite
+        REQUIRE_FALSE(shared.update_best(2, 50, 4));
+        REQUIRE(shared.best_move() == 3);
+        REQUIRE(shared.best_score() == 100);
 
-        // Higher score successfully updates
-        REQUIRE(shared.update_best(4, 250));
-        REQUIRE(shared.global_best_move.load() == 4);
-        REQUIRE(shared.global_best_score.load() == 250);
+        // Higher score at same depth successfully updates
+        REQUIRE(shared.update_best(4, 250, 4));
+        REQUIRE(shared.best_move() == 4);
+        REQUIRE(shared.best_score() == 250);
+
+        // Deeper depth overrides even if heuristic score is lower
+        REQUIRE(shared.update_best(5, -20, 6));
+        REQUIRE(shared.best_move() == 5);
+        REQUIRE(shared.best_score() == -20);
+        REQUIRE(shared.best_depth() == 6);
     }
 }
 

@@ -20,6 +20,7 @@ struct alignas(CACHE_LINE_SIZE) WorkerData {
     Score best_score = 0;
     uint64_t nodes_visited = 0;
     uint64_t beta_cutoffs = 0;
+    bool search_completed = false;
 
     void reset(int id, int offset = 0) noexcept {
         thread_id = id;
@@ -29,6 +30,7 @@ struct alignas(CACHE_LINE_SIZE) WorkerData {
         best_score = 0;
         nodes_visited = 0;
         beta_cutoffs = 0;
+        search_completed = false;
     }
 };
 
