@@ -15,6 +15,7 @@ add_executable(mmb_tests
     test_evaluators.cpp
     test_engines.cpp
     test_concurrency.cpp
+    test_diversification.cpp
 )
 
 target_link_libraries(mmb_tests PRIVATE minimax_core Catch2::Catch2WithMain)
