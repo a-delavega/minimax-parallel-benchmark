@@ -17,6 +17,7 @@ add_executable(mmb_tests
     test_concurrency.cpp
     test_diversification.cpp
     test_reduction.cpp
+    test_lazy_smp.cpp
 )
 
 target_link_libraries(mmb_tests PRIVATE minimax_core Catch2::Catch2WithMain)
