@@ -94,7 +94,8 @@ TEST_CASE("LazySmpEngine: Multi-Threaded Search & Scaling", "[engine][lazy_smp]"
         // Connect 4 symmetry allows center column 3 or adjacent center columns 2 and 4
         REQUIRE((res.best_move == 3 || res.best_move == 2 || res.best_move == 4));
         REQUIRE(res.nodes_visited > 1'000);
-        REQUIRE(res.depth_reached == 6);
+        // Due to SearchDiversifier depth offsets (D+1), depth reached can be at least base depth
+        REQUIRE(res.depth_reached >= 6);
         REQUIRE(res.duration.count() > 0);
     }
 
