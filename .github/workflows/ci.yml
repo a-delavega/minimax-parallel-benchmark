@@ -55,7 +55,7 @@ jobs:
         run: cmake --build build --config ${{ matrix.build_type }} --parallel
 
       - name: Run Catch2 Unit Tests
-        run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
+        run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure --verbose
 
       - name: Run Telemetry Smoke Test
         run: |
