@@ -107,4 +107,12 @@ TEST_CASE("LazySmpEngine: Multi-Threaded Search & Scaling", "[engine][lazy_smp]"
             REQUIRE(res.nodes_visited > 0);
         }
     }
+
+    SECTION("Defensive invariant: never returns illegal move (-1) on playable board") {
+        LazySmpEngine engine(eval, 4);
+        const SearchResult res = engine.search(board, 1);
+        REQUIRE(res.best_move >= 0);
+        REQUIRE(res.best_move < COLS);
+        REQUIRE(board.is_valid_move(res.best_move));
+    }
 }

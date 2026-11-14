@@ -76,6 +76,15 @@ public:
         if (result.depth_reached <= 0) {
             result.depth_reached = max_depth;
         }
+
+        // Defensive fallback: ensure engine never returns an illegal move (-1) on a playable board
+        if (result.best_move == -1) {
+            std::array<Column, COLS> fallback_moves{};
+            const int count = MoveOrderer::get_ordered_moves(board, fallback_moves);
+            if (count > 0) {
+                result.best_move = fallback_moves[0];
+            }
+        }
         return result;
     }
 
@@ -94,6 +103,9 @@ private:
         const ThreadSearchConfig cfg = SearchDiversifier::configure(thread_id, base_depth);
         const Player pov = root_board.current_player;
 
+        // Root Alpha-Beta bounds are set to infinite [-inf, +inf] for fixed-depth Lazy SMP search.
+        // Asymmetric aspiration windows (cfg.aspiration_delta) are reserved for Phase 5 Iterative Deepening
+        // to prevent premature fail-low truncation without re-search.
         Score alpha = std::numeric_limits<Score>::lowest() + 1;
         const Score beta = std::numeric_limits<Score>::max() - 1;
 
@@ -102,9 +114,11 @@ private:
 
         Score best_score = std::numeric_limits<Score>::lowest();
         Column best_col = -1;
+        bool interrupted = false;
 
         for (int i = 0; i < num_moves; ++i) {
             if (shared.should_stop()) {
+                interrupted = true;
                 break;
             }
 
@@ -127,6 +141,7 @@ private:
             );
 
             if (shared.should_stop()) {
+                interrupted = true;
                 break;
             }
 
@@ -146,7 +161,7 @@ private:
             }
         }
 
-        if (!shared.should_stop() && best_col != -1) {
+        if (!interrupted && best_col != -1) {
             data.search_completed = true;
         }
     }
