@@ -1,5 +1,6 @@
 #include "minimax/board.hpp"
 #include "minimax/engines/alpha_beta_engine.hpp"
+#include "minimax/engines/lazy_smp_engine.hpp"
 #include "minimax/engines/minimax_engine.hpp"
 #include "minimax/evaluators/complex_evaluator.hpp"
 #include "minimax/evaluators/simple_evaluator.hpp"
@@ -9,6 +10,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <thread>
 
 using namespace mmb;
 
@@ -50,6 +52,13 @@ void run_smoke_test() {
     const double reduction = 100.0 * (1.0 - static_cast<double>(res_ab_s.nodes_visited) / res_mm.nodes_visited);
     std::cout << "\n[RESULT] Alpha-Beta pruning efficiency vs Minimax: " 
               << std::fixed << std::setprecision(2) << reduction << "% of nodes pruned." << std::endl;
+
+    std::cout << "\n4. LazySmpEngine (SimpleEvaluator, 4 Threads, Depth " << depth << ")..." << std::endl;
+    LazySmpEngine lazy_smp(simple_eval, 4);
+    const auto res_smp = lazy_smp.search(board, depth);
+    std::cout << "   Move: Col " << (res_smp.best_move + 1) << " | Score: " << res_smp.score
+              << " | Nodes: " << res_smp.nodes_visited << " | Time: " << res_smp.duration.count() << " us"
+              << " | Throughput: " << static_cast<uint64_t>(res_smp.nodes_per_second()) << " NPS" << std::endl;
 }
 
 void play_human_vs_engine(int depth = 6, bool human_starts = true, bool use_complex = true) {
@@ -281,10 +290,11 @@ void play_engine_match(int games = 6) {
 void print_help(const char* prog) {
     std::cout << "Usage: " << prog << " [options]\n\n"
               << "Available options:\n"
-              << "  -s, --smoke       Run verification smoke test\n"
+              << "  -s, --smoke       Run verification smoke test (Sequential & Lazy SMP)\n"
               << "  -h, --human       Start interactive Human vs Engine game\n"
               << "  -d, --duel        Run a single-game duel between engines\n"
               << "  -m, --match [N]   Run an automated match of N alternating games (default: 6)\n"
+              << "  -p, --parallel    Run Lazy SMP parallel search duel against Alpha-Beta\n"
               << "  --help            Show this help message\n"
               << "\nWithout arguments, opens the interactive console menu." << std::endl;
 }
@@ -316,6 +326,28 @@ int main(int argc, char* argv[]) {
             play_engine_match(games);
             return 0;
         }
+        if (arg == "--parallel" || arg == "-p") {
+            const unsigned int hw = std::thread::hardware_concurrency();
+            const std::size_t threads = (hw > 1) ? hw : 4;
+            std::cout << "\nRunning Lazy SMP (" << threads << " threads) vs Alpha-Beta (1 thread) Duel...\n";
+            auto simple_eval = std::make_shared<SimpleEvaluator>();
+            auto complex_eval = std::make_shared<ComplexEvaluator>();
+
+            LazySmpEngine engine_smp(simple_eval, threads);
+            AlphaBetaEngine engine_seq(complex_eval);
+
+            Board b;
+            const auto res_seq = engine_seq.search(b, 7);
+            const auto res_par = engine_smp.search(b, 7);
+
+            std::cout << "Sequential Alpha-Beta [d=7]: Move Col " << (res_seq.best_move + 1)
+                      << " | " << res_seq.nodes_visited << " nodes | " << res_seq.duration.count() << " us"
+                      << " | " << static_cast<uint64_t>(res_seq.nodes_per_second()) << " NPS\n";
+            std::cout << "Parallel Lazy SMP    [d=7]: Move Col " << (res_par.best_move + 1)
+                      << " | " << res_par.nodes_visited << " nodes | " << res_par.duration.count() << " us"
+                      << " | " << static_cast<uint64_t>(res_par.nodes_per_second()) << " NPS\n";
+            return 0;
+        }
         if (arg == "--help") {
             print_help(argv[0]);
             return 0;
@@ -332,7 +364,8 @@ int main(int argc, char* argv[]) {
                   << "  [1] Play against the AI Engine (Human vs AlphaBeta)\n"
                   << "  [2] Engine Duel (ComplexEval d=6 vs RawDepth d=8)\n"
                   << "  [3] Automated Tournament of 6 alternating games\n"
-                  << "  [4] Telemetry Smoke Test\n"
+                  << "  [4] Telemetry Smoke Test (includes Lazy SMP 4-thread)\n"
+                  << "  [5] Parallel Lazy SMP Benchmark Duel\n"
                   << "  [0] Exit\n"
                   << "Choice: ";
         
@@ -347,6 +380,26 @@ int main(int argc, char* argv[]) {
             play_engine_match(6);
         } else if (choice == "4") {
             run_smoke_test();
+        } else if (choice == "5") {
+            const unsigned int hw = std::thread::hardware_concurrency();
+            const std::size_t threads = (hw > 1) ? hw : 4;
+            std::cout << "\nRunning Lazy SMP (" << threads << " threads) vs Alpha-Beta (1 thread) Duel...\n";
+            auto simple_eval = std::make_shared<SimpleEvaluator>();
+            auto complex_eval = std::make_shared<ComplexEvaluator>();
+
+            LazySmpEngine engine_smp(simple_eval, threads);
+            AlphaBetaEngine engine_seq(complex_eval);
+
+            Board b;
+            const auto res_seq = engine_seq.search(b, 7);
+            const auto res_par = engine_smp.search(b, 7);
+
+            std::cout << "Sequential Alpha-Beta [d=7]: Move Col " << (res_seq.best_move + 1)
+                      << " | " << res_seq.nodes_visited << " nodes | " << res_seq.duration.count() << " us"
+                      << " | " << static_cast<uint64_t>(res_seq.nodes_per_second()) << " NPS\n";
+            std::cout << "Parallel Lazy SMP    [d=7]: Move Col " << (res_par.best_move + 1)
+                      << " | " << res_par.nodes_visited << " nodes | " << res_par.duration.count() << " us"
+                      << " | " << static_cast<uint64_t>(res_par.nodes_per_second()) << " NPS\n";
         } else if (choice == "0" || choice == "q" || choice == "Q") {
             std::cout << "Exiting program..." << std::endl;
             break;
