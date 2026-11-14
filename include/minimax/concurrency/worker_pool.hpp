@@ -84,8 +84,12 @@ public:
         helpers.reserve(m_thread_count > 1 ? m_thread_count - 1 : 0);
 
         for (std::size_t i = 1; i < m_thread_count; ++i) {
-            helpers.emplace_back([this, i, &task, &shared]() {
-                task(static_cast<int>(i), m_workers[i], shared);
+            helpers.emplace_back([this, i, &task, &shared]() noexcept {
+                try {
+                    task(static_cast<int>(i), m_workers[i], shared);
+                } catch (...) {
+                    shared.request_stop();
+                }
                 shared.completed_workers.fetch_add(1, std::memory_order_release);
             });
         }

@@ -158,6 +158,26 @@ TEST_CASE("Concurrency: WorkerPool Execution & Telemetry Aggregation", "[concurr
         REQUIRE(pool.worker_data(0).nodes_visited == 10);
     }
 
+    SECTION("Helper thread exception resilience avoids process termination") {
+        WorkerPool pool(3);
+        SharedSearchState shared;
+
+        REQUIRE_NOTHROW(
+            pool.execute([](int thread_id, WorkerData& data, SharedSearchState& state) {
+                if (thread_id == 1) {
+                    throw std::runtime_error("Simulated helper failure");
+                }
+                while (!state.should_stop()) {
+                    data.nodes_visited++;
+                    std::this_thread::yield();
+                }
+            }, shared)
+        );
+
+        REQUIRE(shared.completed_workers.load() == 3);
+        REQUIRE(shared.should_stop());
+    }
+
     SECTION("Trivially copyable Board on thread stacks maintains total isolation") {
         WorkerPool pool(4);
         SharedSearchState shared;
