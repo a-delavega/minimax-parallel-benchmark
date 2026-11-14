@@ -23,7 +23,7 @@ namespace mmb {
  */
 class ResultReducer {
 public:
-    static constexpr Score MATE_THRESHOLD = 90'000;
+    static constexpr Score MATE_THRESHOLD = mmb::MATE_THRESHOLD;
 
     /**
      * @brief Aggregate worker results and shared atomic state into a unified SearchResult.

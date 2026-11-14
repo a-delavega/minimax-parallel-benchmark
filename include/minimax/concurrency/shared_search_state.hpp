@@ -115,9 +115,22 @@ struct alignas(CACHE_LINE_SIZE) SharedSearchState {
 
         while (true) {
             const UnpackedBest current = unpack(current_raw);
-            const bool is_better = !current.valid ||
-                                   (clamped_depth > current.depth) ||
-                                   (clamped_depth == current.depth && score > current.score);
+            const bool cand_win = (score >= MATE_THRESHOLD);
+            const bool curr_win = (current.score >= MATE_THRESHOLD);
+
+            bool is_better = false;
+            if (!current.valid) {
+                is_better = true;
+            } else if (cand_win != curr_win) {
+                is_better = cand_win;
+            } else if (cand_win && curr_win) {
+                is_better = (score > current.score);
+            } else if (clamped_depth != current.depth) {
+                is_better = (clamped_depth > current.depth);
+            } else {
+                is_better = (score > current.score);
+            }
+
             if (!is_better) {
                 return false;
             }

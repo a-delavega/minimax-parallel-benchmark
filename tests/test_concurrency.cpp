@@ -87,6 +87,21 @@ TEST_CASE("Concurrency: SharedSearchState Lock-Free Operations", "[concurrency][
         REQUIRE(shared.best_move() == 5);
         REQUIRE(shared.best_score() == -20);
         REQUIRE(shared.best_depth() == 6);
+
+        // Winning forced mate at shallower depth overrides deeper non-mate
+        REQUIRE(shared.update_best(3, 99'995, 4));
+        REQUIRE(shared.best_move() == 3);
+        REQUIRE(shared.best_score() == 99'995);
+        REQUIRE(shared.best_depth() == 4);
+
+        // Faster mate (higher score) overrides slower mate
+        REQUIRE(shared.update_best(2, 99'998, 2));
+        REQUIRE(shared.best_move() == 2);
+        REQUIRE(shared.best_score() == 99'998);
+
+        // Slower mate or non-mate at deeper depth cannot override winning mate
+        REQUIRE_FALSE(shared.update_best(1, 99'990, 8));
+        REQUIRE_FALSE(shared.update_best(6, 500, 10));
     }
 }
 

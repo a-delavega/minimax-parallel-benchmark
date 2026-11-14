@@ -26,4 +26,8 @@ enum class Player : uint8_t {
 inline constexpr int ROWS = 6;
 inline constexpr int COLS = 7;
 
+// Game-theoretic scoring thresholds
+inline constexpr Score MATE_THRESHOLD = 90'000;
+inline constexpr Score SCORE_WIN = 100'000;
+
 } // namespace mmb
