@@ -14,6 +14,7 @@
 #include "minimax/evaluators/complex_evaluator.hpp"
 #include "minimax/evaluators/simple_evaluator.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <iomanip>
@@ -22,12 +23,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-
-#if defined(_MSC_VER)
-#include <intrin.h>
-#else
-#include <x86intrin.h>
-#endif
 
 using namespace mmb;
 
@@ -106,7 +101,9 @@ void run_cas_reduction_contention_profile() {
     std::cout << "Target: SharedSearchState::update_best() 64-bit atomic CAS\n\n";
 
     const unsigned int hw_threads = std::thread::hardware_concurrency();
-    const std::vector<std::size_t> test_configs = {1, 2, 4, 8, hw_threads};
+    std::vector<std::size_t> test_configs = {1, 2, 4, 8, hw_threads > 0 ? hw_threads : 1};
+    std::sort(test_configs.begin(), test_configs.end());
+    test_configs.erase(std::unique(test_configs.begin(), test_configs.end()), test_configs.end());
 
     std::cout << std::setw(10) << "Threads"
               << std::setw(16) << "Total CAS"
@@ -183,7 +180,10 @@ void run_memory_bandwidth_and_stack_profile() {
     tactical_board.make_move(1);
 
     std::cout << "L1 Cache Residency Audit on LazySmpEngine:\n";
-    const std::vector<std::size_t> test_threads = {1, 4, 8, std::thread::hardware_concurrency()};
+    const unsigned int hw_threads_res = std::thread::hardware_concurrency();
+    std::vector<std::size_t> test_threads = {1, 4, 8, hw_threads_res > 0 ? hw_threads_res : 1};
+    std::sort(test_threads.begin(), test_threads.end());
+    test_threads.erase(std::unique(test_threads.begin(), test_threads.end()), test_threads.end());
 
     for (std::size_t t : test_threads) {
         LazySmpEngine engine(eval, t);
