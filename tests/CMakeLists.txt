@@ -20,6 +20,7 @@ add_executable(mmb_tests
     test_lazy_smp.cpp
     test_opponent_model.cpp
     test_opponent_profiler.cpp
+    test_exploit_engine.cpp
 )
 
 target_link_libraries(mmb_tests PRIVATE minimax_core Catch2::Catch2WithMain)
