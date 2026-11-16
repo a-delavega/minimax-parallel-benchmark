@@ -43,8 +43,8 @@ Connect 4 offers the ideal experimental characteristics for this benchmark:
 | **Phase 0** | **Setup & Bitboard Core** | [`v0.1.0-phase0`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.1.0-phase0) | ✅ Complete | 32-byte Bitboard, $\mathcal{O}(1)$ shifts, row-6 sentinel bits, CMake C++20 |
 | **Phase 1** | **Sequential Engine & Heuristics** | [`v0.2.0-phase1`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.2.0-phase1) | ✅ Complete | Minimax vs Alpha-Beta, ComplexEvaluator, Catch2 tests, Benchmarks |
 | **Phase 2** | **Lazy SMP Concurrency (Core)** | [`v0.3.0-phase2`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.3.0-phase2) | ✅ Complete | Zero-mutex hot path, `alignas(64)` false-sharing isolation, 64-bit atomic CAS reduction, strong/weak scaling up to 20 cores |
-| **Phase 3** | **Game Theory & Suboptimal Opponents** | `v0.4.0-phase3` | ⏳ In Progress | Exploitative minimax pruning against erratic/greedy agents, `OpponentProfiler` & `ExploitEngine` |
-| **Phase 4** | **Transposition Tables & Zobrist Hash** | `v0.5.0-phase4` | 📅 Planned | Lock-free concurrent hash table to eliminate transpositions |
+| **Phase 3** | **Game Theory & Suboptimal Opponents** | [`v0.4.0-phase3`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.4.0-phase3) | ✅ Complete | Exploitative Minimax, Bayesian opponent profiling, Expectiminimax chance nodes, Round-Robin Tournament |
+| **Phase 4** | **Transposition Tables & Zobrist Hash** | `v0.5.0-phase4` | ⏳ In Progress | Lock-free concurrent hash table to eliminate transpositions |
 | **Phase 5** | **Real-Time Control & Iterative Deepening** | `v0.6.0-phase5` | 📅 Planned | Strict 50ms deadlines & dynamic time management |
 
 ---
@@ -57,6 +57,7 @@ Comprehensive scientific and architectural documentation is available in the [`d
 - [**01. Phase 0: 64-bit Bitboard Core Architecture**](docs/01_phase0_bitboard_architecture.md): Sentinel bits mathematical proof, 32-byte cache line alignment, $\mathcal{O}(1)$ branchless win detection, and CMake C++20 build orchestration.
 - [**02. Phase 1: Sequential Engine & Benchmarks**](docs/02_phase1_sequential_engine_and_benchmarks.md): Pure Minimax vs. Alpha-Beta pruning, tactical move ordering, Raw Depth vs. Heavy Evaluator trade-offs, Catch2 suite, and empirical analysis ($b^* < 3.0$).
 - [**03. Phase 2: Lazy SMP Architecture & Parallel Scaling**](docs/03_phase2_lazy_smp_and_concurrency.md): Lock-free shared coordination state, zero-mutex worker pool, search diversification, atomic CAS 64-bit packing, scalability curves, and hardware L1 cache profiler.
+- [**04. Phase 3: Game Theory & Exploitative Opponent Search**](docs/04_phase3_game_theory_and_suboptimal_opponents.md): Stochastic Boltzmann/Softmax models, Bayesian belief updating, ExploitEngine tactical traps, Expectiminimax chance nodes, and empirical round-robin tournament matrix.
 
 ---
 
@@ -66,8 +67,8 @@ Comprehensive scientific and architectural documentation is available in the [`d
 flowchart LR
     A["Phase 0<br/><b>Bitboard Setup</b><br/>✅ v0.1.0"] --> B["Phase 1<br/><b>Sequential Engine</b><br/>✅ v0.2.0"]
     B --> C["Phase 2<br/><b>Lazy SMP Core</b><br/>✅ v0.3.0"]
-    C --> D["Phase 3<br/><b>Game Theory</b><br/>⏳ In Progress"]
-    D --> E["Phase 4<br/><b>Transposition Tables</b><br/>📅 Planned"]
+    C --> D["Phase 3<br/><b>Game Theory</b><br/>✅ v0.4.0"]
+    D --> E["Phase 4<br/><b>Transposition Tables</b><br/>⏳ In Progress"]
     E --> F["Phase 5<br/><b>Real-Time Control</b><br/>📅 Planned"]
 ```
 
@@ -222,6 +223,19 @@ Empirical metrics collected by `mmb_parallel_benchmark` on host processor (20 ha
 | `Board::is_winning_move` | 10,000,000 | **~3.4 ns** | **295 MOps/s** | 1-ply tactical lookahead mask |
 | `SimpleEvaluator::evaluate` | 10,000,000 | **~4.2 ns** | **235 MOps/s** | Pure $\mathcal{O}(1)$ terminal distance discounting |
 | `ComplexEvaluator::evaluate` | 2,000,000 | **~66.7 ns** | **15 MOps/s** | 3-in-a-row threat masks + column parity |
+
+### 3. Multi-Engine Round-Robin Tournament (Phase 3 Empirical Standings)
+
+Cross-table evaluation of 6 engines in a balanced color-alternating tournament (`mmb_tournament`):
+
+| Rank | Engine | Played | Wins | Draws | Losses | Points | Win Rate % | Strategy Description |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **1** | **Expectiminimax (d=4)** | 20 | 14 | 6 | 0 | **17.0** | **70.0%** | Probabilistic Chance Nodes + Bayesian Beliefs |
+| **2** | **Alpha-Beta (d=6)** | 20 | 9 | 8 | 3 | **13.0** | **45.0%** | Classical Rational Minimax Baseline |
+| **3** | **ExploitEngine (d=6)** | 20 | 8 | 8 | 4 | **12.0** | **40.0%** | Tactical Trap Maximization + Minimax Guard |
+| **4** | **Lazy SMP (4T, d=6)** | 20 | 7 | 7 | 6 | **10.5** | **35.0%** | Multi-threaded Asymmetric Search |
+| **5** | **Greedy (1-Ply)** | 20 | 5 | 5 | 10 | **7.5** | **25.0%** | 1-Ply Immediate Heuristic Maximizer |
+| **6** | **Random Agent** | 20 | 0 | 0 | 20 | **0.0** | **0.0%** | Uniform Random Baseline (Zero Skill) |
 
 ---
 

@@ -70,3 +70,49 @@ Where:
 To guarantee that exploitative optimism never commits suicide:
 1. If $V_{\text{minimax}}(n) \le -\text{MATE\_THRESHOLD}$, the engine refuses the move regardless of trap payoff.
 2. If a provable forced mate exists ($V(n) \ge \text{MATE\_THRESHOLD}$), the forced win is executed immediately.
+
+---
+
+## 4. Bayesian Belief Updating Over Adversarial Hypotheses
+
+Rather than assuming fixed opponent parameters, the `BayesianOpponentModel` maintains a discrete probability distribution over behavioral hypotheses:
+$$\Theta = \{\text{OptimalMinimax}, \text{Greedy}, \text{ShallowHeuristic}, \text{HumanNovice}, \text{Random}\}$$
+
+Starting from a uniform prior $P(\theta_k) = 1 / |\Theta|$, each observed move $m_{\text{obs}}$ triggers a Bayesian belief update:
+$$P(\theta_k \mid m_{\text{obs}}, B) = \frac{P(m_{\text{obs}} \mid \theta_k, B) P(\theta_k)}{\sum_j P(m_{\text{obs}} \mid \theta_j, B) P(\theta_j)}$$
+
+### Predictive Marginalization
+
+Future opponent actions are forecasted by marginalizing across the hypothesis space:
+$$P(m \mid B) = \sum_{k} P(m \mid \theta_k, B) P(\theta_k)$$
+
+This marginal probability directly feeds the chance nodes of the `ExpectiminimaxEngine`.
+
+---
+
+## 5. Expectiminimax Game-Tree Search
+
+The `ExpectiminimaxEngine` evaluates game trees containing two distinct node types:
+1. **Decision Nodes (Our Turn)**: Maximize deterministic payoff:
+   $$V(n) = \max_{m \in M(n)} V(m)$$
+2. **Chance Nodes (Opponent Turn)**: Compute the expected utility over the opponent's predictive distribution:
+   $$V(n) = \sum_{m \in M(n)} P(m \mid B) V(m)$$
+
+---
+
+## 6. Empirical Round-Robin Tournament Results
+
+Using `TournamentHarness` (`mmb_tournament`), 6 competitive and heuristic engines were evaluated in a balanced round-robin tournament (alternating colors):
+
+| Rank | Engine | Played | Wins | Draws | Losses | Points | Win Rate % | Strategy Profile |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **1** | **Expectiminimax (d=4)** | 20 | 14 | 6 | 0 | **17.0** | **70.0%** | Probabilistic Chance Nodes + Bayesian Beliefs |
+| **2** | **Alpha-Beta (d=6)** | 20 | 9 | 8 | 3 | **13.0** | **45.0%** | Classical Rational Minimax Baseline |
+| **3** | **ExploitEngine (d=6)** | 20 | 8 | 8 | 4 | **12.0** | **40.0%** | Tactical Trap Maximization + Minimax Guard |
+| **4** | **Lazy SMP (4T, d=6)** | 20 | 7 | 7 | 6 | **10.5** | **35.0%** | Multi-threaded Asymmetric Search |
+| **5** | **Greedy (1-Ply)** | 20 | 5 | 5 | 10 | **7.5** | **25.0%** | 1-Ply Immediate Heuristic Maximizer |
+| **6** | **Random Agent** | 20 | 0 | 0 | 20 | **0.0** | **0.0%** | Uniform Random Baseline (Zero Skill) |
+
+### Key Empirical Findings:
+1. **Dominance Over Flawed Agents**: Rational and exploitative engines achieved a **100% win rate** against Random agents and outperformed Greedy 1-ply agents decisively.
+2. **Expectiminimax Efficacy**: By incorporating chance node probabilities, `ExpectiminimaxEngine` converted high-entropy endgame positions into wins against suboptimal play faster than pure minimax.
