@@ -23,6 +23,7 @@ add_executable(mmb_tests
     test_exploit_engine.cpp
     test_bayesian_model.cpp
     test_expectiminimax.cpp
+    test_tournament.cpp
 )
 
 target_link_libraries(mmb_tests PRIVATE minimax_core Catch2::Catch2WithMain)
