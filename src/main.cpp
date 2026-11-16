@@ -1,9 +1,13 @@
 #include "minimax/board.hpp"
 #include "minimax/engines/alpha_beta_engine.hpp"
+#include "minimax/engines/expectiminimax_engine.hpp"
+#include "minimax/engines/exploit_engine.hpp"
 #include "minimax/engines/lazy_smp_engine.hpp"
 #include "minimax/engines/minimax_engine.hpp"
 #include "minimax/evaluators/complex_evaluator.hpp"
 #include "minimax/evaluators/simple_evaluator.hpp"
+#include "minimax/opponent/heuristic_agents.hpp"
+#include "minimax/tournament/tournament_harness.hpp"
 #include "minimax/ui/board_printer.hpp"
 #include <chrono>
 #include <iomanip>
@@ -287,6 +291,37 @@ void play_engine_match(int games = 6) {
     std::cout << "============================================================" << std::endl;
 }
 
+void run_full_tournament(int games_per_pair = 4) {
+    std::cout << "\n============================================================" << std::endl;
+    std::cout << "          MULTI-ENGINE ROUND-ROBIN TOURNAMENT               " << std::endl;
+    std::cout << "============================================================" << std::endl;
+
+    auto eval = std::make_shared<SimpleEvaluator>();
+    TournamentHarness harness;
+
+    auto ab = std::make_shared<AlphaBetaEngine>(eval);
+    auto lazy_smp = std::make_shared<LazySmpEngine>(eval, 4);
+    auto exploit = std::make_shared<ExploitEngine>(eval, OpponentProfile::preset_novice(), 0.70);
+    auto expectiminimax = std::make_shared<ExpectiminimaxEngine>(eval);
+    auto greedy = std::make_shared<GreedyEngine>(eval);
+    auto random = std::make_shared<RandomEngine>(42ULL);
+
+    harness.add_participant("alpha_beta", "Alpha-Beta (d=6)", ab, 6);
+    harness.add_participant("lazy_smp", "Lazy SMP (4T, d=6)", lazy_smp, 6);
+    harness.add_participant("exploit", "ExploitEngine (d=6)", exploit, 6);
+    harness.add_participant("expectiminimax", "Expectiminimax (d=4)", expectiminimax, 4);
+    harness.add_participant("greedy", "Greedy (1-Ply)", greedy, 1);
+    harness.add_participant("random", "Random Agent", random, 1);
+
+    std::cout << "Participants: 6 engines | Games per pair: " << games_per_pair << " (balanced colors)\n";
+    std::cout << "Running tournament...\n\n";
+
+    const auto records = harness.run_tournament(games_per_pair);
+    const auto standings = harness.compute_standings(records);
+
+    std::cout << harness.format_markdown(records, standings) << std::endl;
+}
+
 void print_help(const char* prog) {
     std::cout << "Usage: " << prog << " [options]\n\n"
               << "Available options:\n"
@@ -295,6 +330,7 @@ void print_help(const char* prog) {
               << "  -d, --duel        Run a single-game duel between engines\n"
               << "  -m, --match [N]   Run an automated match of N alternating games (default: 6)\n"
               << "  -p, --parallel    Run Lazy SMP parallel search duel against Alpha-Beta\n"
+              << "  -t, --tournament  Run multi-engine round-robin tournament\n"
               << "  --help            Show this help message\n"
               << "\nWithout arguments, opens the interactive console menu." << std::endl;
 }
@@ -348,6 +384,16 @@ int main(int argc, char* argv[]) {
                       << " | " << static_cast<uint64_t>(res_par.nodes_per_second()) << " NPS\n";
             return 0;
         }
+        if (arg == "--tournament" || arg == "-t") {
+            int games_per_pair = 4;
+            if (argc > 2) {
+                try {
+                    games_per_pair = std::stoi(argv[2]);
+                } catch (...) {}
+            }
+            run_full_tournament(games_per_pair);
+            return 0;
+        }
         if (arg == "--help") {
             print_help(argv[0]);
             return 0;
@@ -366,6 +412,7 @@ int main(int argc, char* argv[]) {
                   << "  [3] Automated Tournament of 6 alternating games\n"
                   << "  [4] Telemetry Smoke Test (includes Lazy SMP 4-thread)\n"
                   << "  [5] Parallel Lazy SMP Benchmark Duel\n"
+                  << "  [6] Multi-Engine Round-Robin Tournament (Phase 3)\n"
                   << "  [0] Exit\n"
                   << "Choice: ";
         
@@ -400,6 +447,8 @@ int main(int argc, char* argv[]) {
             std::cout << "Parallel Lazy SMP    [d=7]: Move Col " << (res_par.best_move + 1)
                       << " | " << res_par.nodes_visited << " nodes | " << res_par.duration.count() << " us"
                       << " | " << static_cast<uint64_t>(res_par.nodes_per_second()) << " NPS\n";
+        } else if (choice == "6") {
+            run_full_tournament(4);
         } else if (choice == "0" || choice == "q" || choice == "Q") {
             std::cout << "Exiting program..." << std::endl;
             break;

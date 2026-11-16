@@ -26,6 +26,13 @@ add_executable(mmb_hardware_profiler profiler_benchmark.cpp)
 target_link_libraries(mmb_hardware_profiler PRIVATE minimax_core)
 target_compile_features(mmb_hardware_profiler PRIVATE cxx_std_20)
 
+# ============================================================
+# Multi-Engine Tournament Benchmark Suite (Subphase 3.5)
+# ============================================================
+add_executable(mmb_tournament tournament_benchmark.cpp)
+target_link_libraries(mmb_tournament PRIVATE minimax_core)
+target_compile_features(mmb_tournament PRIVATE cxx_std_20)
+
 # Optional Google Benchmark integration when requested
 # FetchContent is only executed if MMB_USE_GOOGLE_BENCHMARK is ON
 option(MMB_USE_GOOGLE_BENCHMARK "Enable Google Benchmark integration" OFF)
