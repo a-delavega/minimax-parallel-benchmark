@@ -25,6 +25,7 @@ add_executable(mmb_tests
     test_expectiminimax.cpp
     test_tournament.cpp
     test_zobrist.cpp
+    test_transposition_table.cpp
 )
 
 target_link_libraries(mmb_tests PRIVATE minimax_core Catch2::Catch2WithMain)
