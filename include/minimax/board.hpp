@@ -1,6 +1,7 @@
 #pragma once
 
 #include "minimax/types.hpp"
+#include "minimax/transposition/zobrist.hpp"
 #include <array>
 #include <cstdint>
 
@@ -37,6 +38,9 @@ struct Board {
 
     // Player with the current turn
     Player current_player = Player::Player1;
+
+    // 64-bit Zobrist hash maintained in O(1) across moves
+    uint64_t zobrist_hash = 0ULL;
 
     // ============================================================
     // Bitmask Constants
@@ -86,9 +90,12 @@ struct Board {
      * @param col Column to drop the piece.
      */
     constexpr void make_move(Column col) noexcept {
+        const int row = static_cast<int>(height[col]) - col * 7;
         const uint64_t move_mask = 1ULL << height[col]++;
         bitboard[static_cast<uint8_t>(current_player)] |= move_mask;
         moves_played++;
+        zobrist_hash ^= default_zobrist_keys.piece_key(current_player, col, row);
+        zobrist_hash ^= default_zobrist_keys.turn_key();
         current_player = opponent(current_player);
     }
 
@@ -100,7 +107,10 @@ struct Board {
         current_player = opponent(current_player);
         moves_played--;
         const uint64_t move_mask = 1ULL << (--height[col]);
+        const int row = static_cast<int>(height[col]) - col * 7;
         bitboard[static_cast<uint8_t>(current_player)] &= ~move_mask;
+        zobrist_hash ^= default_zobrist_keys.piece_key(current_player, col, row);
+        zobrist_hash ^= default_zobrist_keys.turn_key();
     }
 
     /**
@@ -165,12 +175,34 @@ struct Board {
         return moves_played >= (ROWS * COLS);
     }
 
+    /**
+     * @brief Computes the Zobrist hash from scratch in O(cells) for validation and integrity checks.
+     */
+    [[nodiscard]] uint64_t compute_zobrist_hash() const noexcept {
+        uint64_t h = 0ULL;
+        for (int c = 0; c < COLS; ++c) {
+            for (int r = 0; r < ROWS; ++r) {
+                const uint64_t mask = 1ULL << (c * 7 + r);
+                if (bitboard[0] & mask) {
+                    h ^= default_zobrist_keys.piece_key(Player::Player1, c, r);
+                } else if (bitboard[1] & mask) {
+                    h ^= default_zobrist_keys.piece_key(Player::Player2, c, r);
+                }
+            }
+        }
+        if (current_player == Player::Player2) {
+            h ^= default_zobrist_keys.turn_key();
+        }
+        return h;
+    }
+
     [[nodiscard]] bool operator==(const Board& other) const noexcept {
         return bitboard[0] == other.bitboard[0] &&
                bitboard[1] == other.bitboard[1] &&
                height == other.height &&
                moves_played == other.moves_played &&
-               current_player == other.current_player;
+               current_player == other.current_player &&
+               zobrist_hash == other.zobrist_hash;
     }
 };
 
