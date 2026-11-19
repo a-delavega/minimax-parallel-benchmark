@@ -233,3 +233,128 @@ TEST_CASE("TranspositionTable: Concurrent Multi-Threaded Read/Write Stress Test 
     REQUIRE(stats.hit_rate() > 0.0);
 }
 
+TEST_CASE("TranspositionTable: AlwaysReplace Policy Invariant (Subphase 4.5)", "[tt][replacement]") {
+    TranspositionTable tt(1, ReplacementPolicy::AlwaysReplace);
+    REQUIRE(tt.replacement_policy() == ReplacementPolicy::AlwaysReplace);
+
+    const size_t cap = tt.capacity();
+    const uint64_t slot = 17;
+    const uint64_t keyDeep = slot;
+    const uint64_t keyShallow = slot + cap; // Colliding key
+
+    // Store keyDeep with depth 12
+    tt.store(keyDeep, 500, 3, 12, TTFlag::Exact, 1);
+    TTEntry probed;
+    REQUIRE(tt.probe(keyDeep, probed));
+    REQUIRE(probed.depth == 12);
+
+    // AlwaysReplace should unconditionally overwrite with shallow key (depth 2)
+    tt.store(keyShallow, -100, 2, 2, TTFlag::Exact, 1);
+    REQUIRE(tt.probe(keyShallow, probed));
+    REQUIRE(probed.depth == 2);
+    REQUIRE(probed.score == -100);
+
+    // keyDeep should be gone
+    REQUIRE_FALSE(tt.probe(keyDeep, probed));
+    REQUIRE(tt.stats().overwrites == 1);
+    REQUIRE(tt.stats().rejections == 0);
+}
+
+TEST_CASE("TranspositionTable: DepthPreferred Policy with Rejection & Aging (Subphase 4.5)", "[tt][replacement]") {
+    TranspositionTable tt(1, ReplacementPolicy::DepthPreferred);
+    REQUIRE(tt.replacement_policy() == ReplacementPolicy::DepthPreferred);
+
+    const size_t cap = tt.capacity();
+    const uint64_t slot = 33;
+    const uint64_t keyA = slot;
+    const uint64_t keyB = slot + cap;       // Colliding key
+    const uint64_t keyC = slot + cap * 2;   // Colliding key
+    const uint64_t keyD = slot + cap * 3;   // Colliding key
+
+    // 1. Store keyA with depth 8 at age 1
+    tt.store(keyA, 100, 3, 8, TTFlag::Exact, 1);
+    TTEntry probed;
+    REQUIRE(tt.probe(keyA, probed));
+    REQUIRE(probed.depth == 8);
+
+    // 2. Try to store shallower colliding keyB (depth 4) at same age 1 -> REJECTED!
+    tt.store(keyB, 200, 2, 4, TTFlag::Exact, 1);
+    REQUIRE(tt.stats().rejections == 1);
+    // keyA is preserved!
+    REQUIRE(tt.probe(keyA, probed));
+    REQUIRE(probed.depth == 8);
+    REQUIRE_FALSE(tt.probe(keyB, probed));
+
+    // 3. Store deeper colliding keyC (depth 12) at same age 1 -> ACCEPTED!
+    tt.store(keyC, 300, 4, 12, TTFlag::Exact, 1);
+    REQUIRE(tt.stats().overwrites == 1);
+    REQUIRE(tt.probe(keyC, probed));
+    REQUIRE(probed.depth == 12);
+    REQUIRE_FALSE(tt.probe(keyA, probed));
+
+    // 4. Generational Aging: advance table age to 4 (age difference = 3)
+    // keyC had depth 12 at age 1. With age_diff=3, effective depth is discounted: 12 - 3*2 = 6
+    // Incoming keyD has depth 7 at age 4 >= 6 -> ACCEPTED due to aging out of old generation!
+    tt.store(keyD, 400, 1, 7, TTFlag::Exact, 4);
+    REQUIRE(tt.stats().overwrites == 2);
+    REQUIRE(tt.probe(keyD, probed));
+    REQUIRE(probed.depth == 7);
+    REQUIRE_FALSE(tt.probe(keyC, probed));
+}
+
+TEST_CASE("TranspositionTable: TwoTier 2-Slot Bucket System (Subphase 4.5)", "[tt][replacement]") {
+    TranspositionTable tt(1, ReplacementPolicy::TwoTier);
+    REQUIRE(tt.replacement_policy() == ReplacementPolicy::TwoTier);
+
+    const size_t num_buckets = tt.capacity() / 2;
+    const uint64_t bucket_idx = 50;
+    const uint64_t keyA = bucket_idx;
+    const uint64_t keyB = bucket_idx + num_buckets;
+    const uint64_t keyC = bucket_idx + num_buckets * 2;
+    const uint64_t keyD = bucket_idx + num_buckets * 3;
+
+    // 1. Store keyA (depth 10) -> placed in Slot 0 (deep)
+    tt.store(keyA, 100, 3, 10, TTFlag::Exact, 1);
+
+    // 2. Store keyB (depth 4) -> placed in Slot 1 (recent)
+    tt.store(keyB, 200, 2, 4, TTFlag::Exact, 1);
+
+    // BOTH entries must hit!
+    TTEntry probedA, probedB;
+    REQUIRE(tt.probe(keyA, probedA));
+    REQUIRE(probedA.depth == 10);
+    REQUIRE(tt.probe(keyB, probedB));
+    REQUIRE(probedB.depth == 4);
+
+    // 3. Store keyC (depth 3) in same bucket -> overwrites recent slot (keyB), preserves deep slot (keyA)!
+    tt.store(keyC, 300, 4, 3, TTFlag::Exact, 1);
+    TTEntry probedC;
+    REQUIRE(tt.probe(keyA, probedA)); // Deep slot intact!
+    REQUIRE(tt.probe(keyC, probedC)); // Recent slot updated!
+    REQUIRE_FALSE(tt.probe(keyB, probedB)); // Evicted
+
+    // 4. Store keyD (depth 15) -> deeper than deep slot (keyA depth 10)!
+    // keyD becomes deep slot, keyA is demoted to recent slot, keyC is evicted!
+    tt.store(keyD, 400, 1, 15, TTFlag::Exact, 1);
+    TTEntry probedD;
+    REQUIRE(tt.probe(keyD, probedD));
+    REQUIRE(probedD.depth == 15);
+    REQUIRE(tt.probe(keyA, probedA)); // Demoted to recent, still hits!
+    REQUIRE_FALSE(tt.probe(keyC, probedC)); // Evicted
+}
+
+TEST_CASE("TranspositionTable: Generational Age Control (Subphase 4.5)", "[tt][replacement]") {
+    TranspositionTable tt(1);
+    REQUIRE(tt.current_age() == 0);
+
+    tt.new_search();
+    REQUIRE(tt.current_age() == 1);
+
+    tt.new_search();
+    REQUIRE(tt.current_age() == 2);
+
+    tt.set_age(10);
+    REQUIRE(tt.current_age() == 10);
+}
+
+

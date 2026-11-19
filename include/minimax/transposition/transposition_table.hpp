@@ -20,6 +20,15 @@ enum class TTFlag : uint8_t {
 };
 
 /**
+ * @brief Replacement policy when a collision occurs at a transposition table slot.
+ */
+enum class ReplacementPolicy : uint8_t {
+    AlwaysReplace = 0,   ///< Always overwrite slot with the incoming entry
+    DepthPreferred = 1,  ///< Overwrite only if incoming entry has higher depth or younger generation
+    TwoTier = 2          ///< 2-slot bucket: Slot 0 (Depth-Preferred), Slot 1 (Always-Replace / Recent)
+};
+
+/**
  * @brief Cache-aligned Transposition Table Entry (exactly 16 bytes).
  * 
  * Memory Layout:
@@ -97,10 +106,14 @@ static_assert(sizeof(TTAtomicSlot) == 16, "TTAtomicSlot must be exactly 16 bytes
 static_assert(alignof(TTAtomicSlot) == 16, "TTAtomicSlot must be 16-byte aligned");
 
 /**
- * @brief High-performance Lock-Free Transposition Table with power-of-two sizing.
+ * @brief High-performance Lock-Free Transposition Table with configurable replacement policies.
  * 
- * Thread-safe for concurrent read and write operations across multiple Lazy SMP threads
- * using relaxed 64-bit atomic operations and XOR key verification.
+ * Features:
+ * - O(1) probe and store with bitwise power-of-two masking (zero division instructions).
+ * - Lock-free concurrency with Hyatt XOR verification (immune to torn reads).
+ * - Configurable replacement policies: AlwaysReplace, DepthPreferred, TwoTier (2-slot buckets).
+ * - Generational search aging (age counters & new_search() generational promotion).
+ * - Real-time thread-safe telemetric monitoring.
  */
 class TranspositionTable {
 public:
@@ -116,6 +129,7 @@ public:
         std::atomic<uint64_t> collisions{0};
         std::atomic<uint64_t> stores{0};
         std::atomic<uint64_t> overwrites{0};
+        std::atomic<uint64_t> rejections{0};
 
         Stats() noexcept = default;
 
@@ -127,7 +141,8 @@ public:
               misses(other.misses.load(std::memory_order_relaxed)),
               collisions(other.collisions.load(std::memory_order_relaxed)),
               stores(other.stores.load(std::memory_order_relaxed)),
-              overwrites(other.overwrites.load(std::memory_order_relaxed)) {}
+              overwrites(other.overwrites.load(std::memory_order_relaxed)),
+              rejections(other.rejections.load(std::memory_order_relaxed)) {}
 
         Stats& operator=(const Stats& other) noexcept {
             if (this != &other) {
@@ -139,6 +154,7 @@ public:
                 collisions.store(other.collisions.load(std::memory_order_relaxed), std::memory_order_relaxed);
                 stores.store(other.stores.load(std::memory_order_relaxed), std::memory_order_relaxed);
                 overwrites.store(other.overwrites.load(std::memory_order_relaxed), std::memory_order_relaxed);
+                rejections.store(other.rejections.load(std::memory_order_relaxed), std::memory_order_relaxed);
             }
             return *this;
         }
@@ -156,10 +172,12 @@ public:
     };
 
     /**
-     * @brief Constructs a Transposition Table with the given size in Megabytes.
+     * @brief Constructs a Transposition Table with the given size in Megabytes and replacement policy.
      * @param size_mb Memory size in megabytes (default: 16 MB).
+     * @param policy Replacement policy (default: DepthPreferred).
      */
-    explicit TranspositionTable(size_t size_mb = DEFAULT_SIZE_MB) {
+    explicit TranspositionTable(size_t size_mb = DEFAULT_SIZE_MB, ReplacementPolicy policy = ReplacementPolicy::DepthPreferred)
+        : policy_(policy) {
         resize_mb(size_mb);
     }
 
@@ -196,15 +214,36 @@ public:
      */
     [[nodiscard]] bool probe(uint64_t key, TTEntry& out_entry) noexcept {
         stats_.probes.fetch_add(1, std::memory_order_relaxed);
+
+        if (policy_ == ReplacementPolicy::TwoTier && capacity_ >= 2) {
+            const size_t bucket_mask = (capacity_ / 2) - 1;
+            const size_t slot0_idx = (key & bucket_mask) * 2;
+            const size_t slot1_idx = slot0_idx + 1;
+
+            // Probe Slot 0 (Deep)
+            if (probe_slot(table_[slot0_idx], key, out_entry)) {
+                stats_.hits.fetch_add(1, std::memory_order_relaxed);
+                return true;
+            }
+
+            // Probe Slot 1 (Recent)
+            if (probe_slot(table_[slot1_idx], key, out_entry)) {
+                stats_.hits.fetch_add(1, std::memory_order_relaxed);
+                return true;
+            }
+
+            stats_.misses.fetch_add(1, std::memory_order_relaxed);
+            if (!table_[slot0_idx].is_empty() || !table_[slot1_idx].is_empty()) {
+                stats_.collisions.fetch_add(1, std::memory_order_relaxed);
+            }
+            return false;
+        }
+
+        // Single-tier (AlwaysReplace or DepthPreferred)
         const size_t index = key & mask_;
         const auto& slot = table_[index];
 
-        const uint64_t d = slot.data.load(std::memory_order_relaxed);
-        const uint64_t k = slot.key_xor_data.load(std::memory_order_relaxed);
-
-        if ((k ^ d) == key && !slot.is_empty()) {
-            out_entry.zobrist_key = key;
-            decode_data(d, out_entry.score, out_entry.best_move, out_entry.depth, out_entry.flag, out_entry.age);
+        if (probe_slot(slot, key, out_entry)) {
             stats_.hits.fetch_add(1, std::memory_order_relaxed);
             return true;
         }
@@ -217,16 +256,25 @@ public:
     }
 
     /**
-     * @brief Stores an evaluation entry into the table in O(1).
+     * @brief Stores an evaluation entry into the table in O(1) guided by replacement policy.
      * @param key 64-bit Zobrist key.
      * @param score Search evaluation score.
      * @param best_move Best suggested move [0..6] or NO_MOVE (255).
      * @param depth Search depth reached.
      * @param flag TTFlag bound type.
-     * @param age Search age / generation counter.
+     * @param age Search age / generation counter (0 to use current table age).
      */
     void store(uint64_t key, Score score, Column best_move, uint8_t depth, TTFlag flag, uint8_t age = 0) noexcept {
         stats_.stores.fetch_add(1, std::memory_order_relaxed);
+        if (age == 0) {
+            age = current_age_.load(std::memory_order_relaxed);
+        }
+
+        if (policy_ == ReplacementPolicy::TwoTier && capacity_ >= 2) {
+            store_two_tier(key, score, best_move, depth, flag, age);
+            return;
+        }
+
         const size_t index = key & mask_;
         auto& slot = table_[index];
 
@@ -236,15 +284,74 @@ public:
 
         if (was_empty) {
             stats_.entries_occupied.fetch_add(1, std::memory_order_relaxed);
-        } else if ((old_k ^ old_d) != key) {
-            stats_.overwrites.fetch_add(1, std::memory_order_relaxed);
+            write_slot(slot, key, score, best_move, depth, flag, age);
+            return;
         }
 
-        const uint64_t new_d = encode_data(score, best_move, depth, flag, age);
-        const uint64_t new_k = key ^ new_d;
+        const uint64_t old_key = old_k ^ old_d;
 
-        slot.key_xor_data.store(new_k, std::memory_order_relaxed);
-        slot.data.store(new_d, std::memory_order_relaxed);
+        if (policy_ == ReplacementPolicy::AlwaysReplace) {
+            if (old_key != key) {
+                stats_.overwrites.fetch_add(1, std::memory_order_relaxed);
+            }
+            write_slot(slot, key, score, best_move, depth, flag, age);
+            return;
+        }
+
+        // DepthPreferred policy with Generational Aging
+        int32_t ex_score = 0;
+        uint8_t ex_move = 255;
+        uint8_t ex_depth = 0;
+        uint8_t ex_flag = 0;
+        uint8_t ex_age = 0;
+        decode_data(old_d, ex_score, ex_move, ex_depth, ex_flag, ex_age);
+
+        if (old_key == key) {
+            // Same position: upgrade if depth is at least equal or exact flag
+            if (depth >= ex_depth || flag == TTFlag::Exact || age > ex_age) {
+                write_slot(slot, key, score, best_move, depth, flag, age);
+            } else {
+                stats_.rejections.fetch_add(1, std::memory_order_relaxed);
+            }
+            return;
+        }
+
+        // Different position collision: compare depth discounted by generational age
+        const int age_diff = static_cast<int>(age) - static_cast<int>(ex_age);
+        const int effective_ex_depth = std::max(0, static_cast<int>(ex_depth) - std::max(0, age_diff) * 2);
+
+        if (static_cast<int>(depth) >= effective_ex_depth) {
+            stats_.overwrites.fetch_add(1, std::memory_order_relaxed);
+            write_slot(slot, key, score, best_move, depth, flag, age);
+        } else {
+            stats_.rejections.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
+    /**
+     * @brief Advances generation age counter for Iterative Deepening and multi-move aging.
+     */
+    void new_search() noexcept {
+        current_age_.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Manually sets generation age counter.
+     */
+    void set_age(uint8_t age) noexcept {
+        current_age_.store(age, std::memory_order_relaxed);
+    }
+
+    [[nodiscard]] uint8_t current_age() const noexcept {
+        return current_age_.load(std::memory_order_relaxed);
+    }
+
+    [[nodiscard]] ReplacementPolicy replacement_policy() const noexcept {
+        return policy_;
+    }
+
+    void set_replacement_policy(ReplacementPolicy policy) noexcept {
+        policy_ = policy;
     }
 
     /**
@@ -268,6 +375,7 @@ public:
         stats_.collisions.store(0, std::memory_order_relaxed);
         stats_.stores.store(0, std::memory_order_relaxed);
         stats_.overwrites.store(0, std::memory_order_relaxed);
+        stats_.rejections.store(0, std::memory_order_relaxed);
         stats_.capacity = capacity_;
 
         size_t occ = 0;
@@ -316,9 +424,107 @@ public:
     }
 
 private:
+    static bool probe_slot(const TTAtomicSlot& slot, uint64_t key, TTEntry& out_entry) noexcept {
+        const uint64_t d = slot.data.load(std::memory_order_relaxed);
+        const uint64_t k = slot.key_xor_data.load(std::memory_order_relaxed);
+
+        if ((k ^ d) == key && !slot.is_empty()) {
+            out_entry.zobrist_key = key;
+            decode_data(d, out_entry.score, out_entry.best_move, out_entry.depth, out_entry.flag, out_entry.age);
+            return true;
+        }
+        return false;
+    }
+
+    static void write_slot(TTAtomicSlot& slot, uint64_t key, Score score, Column best_move, uint8_t depth, TTFlag flag, uint8_t age) noexcept {
+        const uint64_t new_d = encode_data(score, best_move, depth, flag, age);
+        const uint64_t new_k = key ^ new_d;
+        slot.key_xor_data.store(new_k, std::memory_order_relaxed);
+        slot.data.store(new_d, std::memory_order_relaxed);
+    }
+
+    void store_two_tier(uint64_t key, Score score, Column best_move, uint8_t depth, TTFlag flag, uint8_t age) noexcept {
+        const size_t bucket_mask = (capacity_ / 2) - 1;
+        const size_t slot0_idx = (key & bucket_mask) * 2;
+        const size_t slot1_idx = slot0_idx + 1;
+
+        auto& deep_slot = table_[slot0_idx];
+        auto& recent_slot = table_[slot1_idx];
+
+        const uint64_t d0 = deep_slot.data.load(std::memory_order_relaxed);
+        const uint64_t k0 = deep_slot.key_xor_data.load(std::memory_order_relaxed);
+        const uint64_t key0 = k0 ^ d0;
+        const bool empty0 = deep_slot.is_empty();
+
+        const uint64_t d1 = recent_slot.data.load(std::memory_order_relaxed);
+        const uint64_t k1 = recent_slot.key_xor_data.load(std::memory_order_relaxed);
+        const uint64_t key1 = k1 ^ d1;
+        const bool empty1 = recent_slot.is_empty();
+
+        // Case 1: Key matches Deep Slot
+        if (!empty0 && key0 == key) {
+            uint8_t ex_depth = static_cast<uint8_t>((d0 >> 40) & 0xFFULL);
+            uint8_t ex_age = static_cast<uint8_t>((d0 >> 56) & 0xFFULL);
+            if (depth >= ex_depth || age > ex_age) {
+                write_slot(deep_slot, key, score, best_move, depth, flag, age);
+            } else {
+                write_slot(recent_slot, key, score, best_move, depth, flag, age);
+            }
+            return;
+        }
+
+        // Case 2: Key matches Recent Slot
+        if (!empty1 && key1 == key) {
+            uint8_t deep_depth = empty0 ? 0 : static_cast<uint8_t>((d0 >> 40) & 0xFFULL);
+            if (depth > deep_depth) {
+                // Promote to deep slot and demote old deep to recent slot
+                if (!empty0) {
+                    recent_slot.key_xor_data.store(k0, std::memory_order_relaxed);
+                    recent_slot.data.store(d0, std::memory_order_relaxed);
+                }
+                write_slot(deep_slot, key, score, best_move, depth, flag, age);
+            } else {
+                write_slot(recent_slot, key, score, best_move, depth, flag, age);
+            }
+            return;
+        }
+
+        // Case 3: Empty slot available
+        if (empty0) {
+            stats_.entries_occupied.fetch_add(1, std::memory_order_relaxed);
+            write_slot(deep_slot, key, score, best_move, depth, flag, age);
+            return;
+        }
+        if (empty1) {
+            stats_.entries_occupied.fetch_add(1, std::memory_order_relaxed);
+            write_slot(recent_slot, key, score, best_move, depth, flag, age);
+            return;
+        }
+
+        // Case 4: Neither matches and both full -> replacement evaluation
+        uint8_t deep_depth = static_cast<uint8_t>((d0 >> 40) & 0xFFULL);
+        uint8_t deep_age = static_cast<uint8_t>((d0 >> 56) & 0xFFULL);
+        const int age_diff = static_cast<int>(age) - static_cast<int>(deep_age);
+
+        if (depth > deep_depth || age_diff > 0) {
+            // New entry is deeper or from younger generation than current deep slot:
+            // Move current deep entry into recent slot, and store new in deep slot
+            recent_slot.key_xor_data.store(k0, std::memory_order_relaxed);
+            recent_slot.data.store(d0, std::memory_order_relaxed);
+            write_slot(deep_slot, key, score, best_move, depth, flag, age);
+            stats_.overwrites.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            // Otherwise, overwrite recent slot (Always-Replace behavior for secondary slot)
+            write_slot(recent_slot, key, score, best_move, depth, flag, age);
+            stats_.overwrites.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
     std::vector<TTAtomicSlot> table_;
     size_t capacity_ = 0;
     size_t mask_ = 0;
+    ReplacementPolicy policy_ = ReplacementPolicy::DepthPreferred;
+    std::atomic<uint8_t> current_age_{0};
     Stats stats_{};
 };
 
