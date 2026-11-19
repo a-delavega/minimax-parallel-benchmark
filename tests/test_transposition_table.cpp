@@ -1,6 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include "minimax/transposition/transposition_table.hpp"
 #include <cstddef>
+#include <thread>
+#include <vector>
+#include <atomic>
 
 using namespace mmb;
 
@@ -130,3 +133,103 @@ TEST_CASE("TranspositionTable: Collisions, Overwrites & Telemetry (Subphase 4.3)
     REQUIRE(tt.stats().probes == 0);
     REQUIRE_FALSE(tt.probe(keyB, probed));
 }
+
+TEST_CASE("TTAtomicSlot: 16-Byte Size, Alignment & XOR Trick Correctness (Subphase 4.4)", "[tt][concurrency]") {
+    STATIC_REQUIRE(sizeof(TTAtomicSlot) == 16);
+    STATIC_REQUIRE(alignof(TTAtomicSlot) == 16);
+
+    TTAtomicSlot slot;
+    REQUIRE(slot.is_empty());
+
+    const uint64_t key = 0xFEDCBA9876543210ULL;
+    const Score score = 12345;
+    const Column best_move = 3;
+    const uint8_t depth = 10;
+    const TTFlag flag = TTFlag::Exact;
+    const uint8_t age = 4;
+
+    const uint64_t data = TranspositionTable::encode_data(score, best_move, depth, flag, age);
+    const uint64_t key_xor_data = key ^ data;
+
+    slot.key_xor_data.store(key_xor_data, std::memory_order_relaxed);
+    slot.data.store(data, std::memory_order_relaxed);
+    REQUIRE_FALSE(slot.is_empty());
+
+    // Valid read with XOR trick
+    const uint64_t read_d = slot.data.load(std::memory_order_relaxed);
+    const uint64_t read_k = slot.key_xor_data.load(std::memory_order_relaxed);
+    REQUIRE((read_k ^ read_d) == key);
+
+    // Simulated torn read: corrupt one bit of data
+    const uint64_t corrupt_d = read_d ^ 0x1ULL;
+    REQUIRE((read_k ^ corrupt_d) != key); // Torn read is rejected!
+}
+
+TEST_CASE("TranspositionTable: Concurrent Multi-Threaded Read/Write Stress Test (Subphase 4.4)", "[tt][concurrency]") {
+    // 2 MB table (131072 entries)
+    TranspositionTable tt(2);
+
+    constexpr size_t NUM_THREADS = 8;
+    constexpr size_t OPS_PER_THREAD = 10'000;
+
+    std::atomic<bool> start_gate{false};
+    std::atomic<size_t> torn_reads_detected{0};
+    std::atomic<size_t> successful_hits{0};
+    std::vector<std::thread> workers;
+    workers.reserve(NUM_THREADS);
+
+    for (size_t t = 0; t < NUM_THREADS; ++t) {
+        workers.emplace_back([&, t]() {
+            while (!start_gate.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+
+            for (size_t i = 0; i < OPS_PER_THREAD; ++i) {
+                // Generate a key with thread id embedded and high bits
+                const uint64_t key = (static_cast<uint64_t>(t) << 48) | (static_cast<uint64_t>(i % 500) << 16) | 0xA5A5ULL;
+                const Score score = static_cast<Score>((key & 0x7FFF) ^ 0x1234);
+                const Column move = static_cast<Column>((key >> 4) % 7);
+                const uint8_t depth = static_cast<uint8_t>((key >> 8) % 20);
+                const TTFlag flag = static_cast<TTFlag>((key >> 2) % 3);
+                const uint8_t age = static_cast<uint8_t>(t & 0xFF);
+
+                // Alternating write and probe
+                tt.store(key, score, move, depth, flag, age);
+
+                TTEntry probed;
+                if (tt.probe(key, probed)) {
+                    successful_hits.fetch_add(1, std::memory_order_relaxed);
+                    // Critical verification: ensure data is never a torn mixture
+                    const Score expected_score = static_cast<Score>((probed.zobrist_key & 0x7FFF) ^ 0x1234);
+                    const Column expected_move = static_cast<Column>((probed.zobrist_key >> 4) % 7);
+                    const uint8_t expected_depth = static_cast<uint8_t>((probed.zobrist_key >> 8) % 20);
+                    const TTFlag expected_flag = static_cast<TTFlag>((probed.zobrist_key >> 2) % 3);
+
+                    if (probed.score != expected_score ||
+                        probed.best_move != expected_move ||
+                        probed.depth != expected_depth ||
+                        probed.get_flag() != expected_flag) {
+                        torn_reads_detected.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
+            }
+        });
+    }
+
+    start_gate.store(true, std::memory_order_release);
+    for (auto& w : workers) {
+        w.join();
+    }
+
+    // Zero torn reads under heavy multithreaded contention
+    REQUIRE(torn_reads_detected.load() == 0);
+    REQUIRE(successful_hits.load() > 0);
+
+    // Verify telemetry integrity under concurrency
+    const auto stats = tt.stats();
+    REQUIRE(stats.probes == stats.hits + stats.misses);
+    REQUIRE(stats.stores == NUM_THREADS * OPS_PER_THREAD);
+    REQUIRE(stats.entries_occupied > 0);
+    REQUIRE(stats.hit_rate() > 0.0);
+}
+

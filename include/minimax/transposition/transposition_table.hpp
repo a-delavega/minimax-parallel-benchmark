@@ -6,6 +6,7 @@
 #include <vector>
 #include <bit>
 #include <algorithm>
+#include <atomic>
 
 namespace mmb {
 
@@ -57,10 +58,49 @@ static_assert(sizeof(TTEntry) == 16, "TTEntry must be exactly 16 bytes for 4-ent
 static_assert(alignof(TTEntry) == 16, "TTEntry must be 16-byte aligned");
 
 /**
- * @brief High-performance Transposition Table with power-of-two sizing.
+ * @brief Lock-free atomic storage slot using Hyatt's XOR verification trick.
  * 
- * Provides O(1) lookup and storage using bitwise masking (index = key & mask)
- * with zero hardware division overhead.
+ * Stored fields:
+ * - key_xor_data: std::atomic<uint64_t> (key ^ data)
+ * - data:         std::atomic<uint64_t> (packed score, best_move, depth, flag, age)
+ * 
+ * Guarantees zero torn-read corruption under concurrent multithreaded Lazy SMP.
+ * Any partial/interleaved write causes (key_xor_data ^ data) != key, which
+ * immediately triggers an undetected cache miss rather than returning corrupt data.
+ */
+struct alignas(16) TTAtomicSlot {
+    std::atomic<uint64_t> key_xor_data{0ULL};
+    std::atomic<uint64_t> data{0ULL};
+
+    TTAtomicSlot() noexcept = default;
+
+    TTAtomicSlot(const TTAtomicSlot& other) noexcept {
+        key_xor_data.store(other.key_xor_data.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        data.store(other.data.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    }
+
+    TTAtomicSlot& operator=(const TTAtomicSlot& other) noexcept {
+        if (this != &other) {
+            key_xor_data.store(other.key_xor_data.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            data.store(other.data.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        }
+        return *this;
+    }
+
+    [[nodiscard]] bool is_empty() const noexcept {
+        return key_xor_data.load(std::memory_order_relaxed) == 0ULL &&
+               data.load(std::memory_order_relaxed) == 0ULL;
+    }
+};
+
+static_assert(sizeof(TTAtomicSlot) == 16, "TTAtomicSlot must be exactly 16 bytes for 4-entry cache line packing");
+static_assert(alignof(TTAtomicSlot) == 16, "TTAtomicSlot must be 16-byte aligned");
+
+/**
+ * @brief High-performance Lock-Free Transposition Table with power-of-two sizing.
+ * 
+ * Thread-safe for concurrent read and write operations across multiple Lazy SMP threads
+ * using relaxed 64-bit atomic operations and XOR key verification.
  */
 class TranspositionTable {
 public:
@@ -69,20 +109,49 @@ public:
 
     struct Stats {
         size_t capacity = 0;
-        size_t entries_occupied = 0;
-        uint64_t probes = 0;
-        uint64_t hits = 0;
-        uint64_t misses = 0;
-        uint64_t collisions = 0;
-        uint64_t stores = 0;
-        uint64_t overwrites = 0;
+        std::atomic<size_t> entries_occupied{0};
+        std::atomic<uint64_t> probes{0};
+        std::atomic<uint64_t> hits{0};
+        std::atomic<uint64_t> misses{0};
+        std::atomic<uint64_t> collisions{0};
+        std::atomic<uint64_t> stores{0};
+        std::atomic<uint64_t> overwrites{0};
+
+        Stats() noexcept = default;
+
+        Stats(const Stats& other) noexcept
+            : capacity(other.capacity),
+              entries_occupied(other.entries_occupied.load(std::memory_order_relaxed)),
+              probes(other.probes.load(std::memory_order_relaxed)),
+              hits(other.hits.load(std::memory_order_relaxed)),
+              misses(other.misses.load(std::memory_order_relaxed)),
+              collisions(other.collisions.load(std::memory_order_relaxed)),
+              stores(other.stores.load(std::memory_order_relaxed)),
+              overwrites(other.overwrites.load(std::memory_order_relaxed)) {}
+
+        Stats& operator=(const Stats& other) noexcept {
+            if (this != &other) {
+                capacity = other.capacity;
+                entries_occupied.store(other.entries_occupied.load(std::memory_order_relaxed), std::memory_order_relaxed);
+                probes.store(other.probes.load(std::memory_order_relaxed), std::memory_order_relaxed);
+                hits.store(other.hits.load(std::memory_order_relaxed), std::memory_order_relaxed);
+                misses.store(other.misses.load(std::memory_order_relaxed), std::memory_order_relaxed);
+                collisions.store(other.collisions.load(std::memory_order_relaxed), std::memory_order_relaxed);
+                stores.store(other.stores.load(std::memory_order_relaxed), std::memory_order_relaxed);
+                overwrites.store(other.overwrites.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            }
+            return *this;
+        }
 
         [[nodiscard]] double hit_rate() const noexcept {
-            return (probes == 0) ? 0.0 : static_cast<double>(hits) / static_cast<double>(probes);
+            const uint64_t p = probes.load(std::memory_order_relaxed);
+            const uint64_t h = hits.load(std::memory_order_relaxed);
+            return (p == 0) ? 0.0 : static_cast<double>(h) / static_cast<double>(p);
         }
 
         [[nodiscard]] double occupancy() const noexcept {
-            return (capacity == 0) ? 0.0 : static_cast<double>(entries_occupied) / static_cast<double>(capacity);
+            const size_t occ = entries_occupied.load(std::memory_order_relaxed);
+            return (capacity == 0) ? 0.0 : static_cast<double>(occ) / static_cast<double>(capacity);
         }
     };
 
@@ -100,7 +169,7 @@ public:
     void resize_mb(size_t size_mb) {
         if (size_mb == 0) size_mb = 1;
         const size_t total_bytes = size_mb * 1024 * 1024;
-        const size_t raw_entries = total_bytes / sizeof(TTEntry);
+        const size_t raw_entries = total_bytes / sizeof(TTAtomicSlot);
         resize_entries(raw_entries);
     }
 
@@ -109,14 +178,13 @@ public:
      */
     void resize_entries(size_t count) {
         if (count < 2) count = 2;
-        // Round down or up to power of 2
         size_t power_of_two = 1;
         while (power_of_two * 2 <= count) {
             power_of_two *= 2;
         }
         capacity_ = power_of_two;
         mask_ = capacity_ - 1;
-        table_.assign(capacity_, TTEntry{});
+        table_ = std::vector<TTAtomicSlot>(capacity_);
         clear_stats();
     }
 
@@ -127,19 +195,23 @@ public:
      * @return true if an entry with matching key was found, false otherwise.
      */
     [[nodiscard]] bool probe(uint64_t key, TTEntry& out_entry) noexcept {
-        stats_.probes++;
+        stats_.probes.fetch_add(1, std::memory_order_relaxed);
         const size_t index = key & mask_;
-        const TTEntry& slot = table_[index];
+        const auto& slot = table_[index];
 
-        if (slot.zobrist_key == key) {
-            out_entry = slot;
-            stats_.hits++;
+        const uint64_t d = slot.data.load(std::memory_order_relaxed);
+        const uint64_t k = slot.key_xor_data.load(std::memory_order_relaxed);
+
+        if ((k ^ d) == key && !slot.is_empty()) {
+            out_entry.zobrist_key = key;
+            decode_data(d, out_entry.score, out_entry.best_move, out_entry.depth, out_entry.flag, out_entry.age);
+            stats_.hits.fetch_add(1, std::memory_order_relaxed);
             return true;
         }
 
-        stats_.misses++;
+        stats_.misses.fetch_add(1, std::memory_order_relaxed);
         if (!slot.is_empty()) {
-            stats_.collisions++;
+            stats_.collisions.fetch_add(1, std::memory_order_relaxed);
         }
         return false;
     }
@@ -154,30 +226,35 @@ public:
      * @param age Search age / generation counter.
      */
     void store(uint64_t key, Score score, Column best_move, uint8_t depth, TTFlag flag, uint8_t age = 0) noexcept {
-        stats_.stores++;
+        stats_.stores.fetch_add(1, std::memory_order_relaxed);
         const size_t index = key & mask_;
-        TTEntry& slot = table_[index];
+        auto& slot = table_[index];
 
-        if (slot.is_empty()) {
-            stats_.entries_occupied++;
-        } else if (slot.zobrist_key != key) {
-            stats_.overwrites++;
+        const uint64_t old_d = slot.data.load(std::memory_order_relaxed);
+        const uint64_t old_k = slot.key_xor_data.load(std::memory_order_relaxed);
+        const bool was_empty = (old_d == 0ULL && old_k == 0ULL);
+
+        if (was_empty) {
+            stats_.entries_occupied.fetch_add(1, std::memory_order_relaxed);
+        } else if ((old_k ^ old_d) != key) {
+            stats_.overwrites.fetch_add(1, std::memory_order_relaxed);
         }
 
-        // Store entry data
-        slot.zobrist_key = key;
-        slot.score = static_cast<int32_t>(score);
-        slot.best_move = static_cast<uint8_t>(best_move);
-        slot.depth = depth;
-        slot.flag = static_cast<uint8_t>(flag);
-        slot.age = age;
+        const uint64_t new_d = encode_data(score, best_move, depth, flag, age);
+        const uint64_t new_k = key ^ new_d;
+
+        slot.key_xor_data.store(new_k, std::memory_order_relaxed);
+        slot.data.store(new_d, std::memory_order_relaxed);
     }
 
     /**
      * @brief Clears all entries in the table and resets telemetry counters.
      */
     void clear() noexcept {
-        std::fill(table_.begin(), table_.end(), TTEntry{});
+        for (auto& slot : table_) {
+            slot.key_xor_data.store(0ULL, std::memory_order_relaxed);
+            slot.data.store(0ULL, std::memory_order_relaxed);
+        }
         clear_stats();
     }
 
@@ -185,30 +262,61 @@ public:
      * @brief Resets only the query telemetry counters, preserving stored entries.
      */
     void clear_stats() noexcept {
-        stats_.probes = 0;
-        stats_.hits = 0;
-        stats_.misses = 0;
-        stats_.collisions = 0;
-        stats_.stores = 0;
-        stats_.overwrites = 0;
+        stats_.probes.store(0, std::memory_order_relaxed);
+        stats_.hits.store(0, std::memory_order_relaxed);
+        stats_.misses.store(0, std::memory_order_relaxed);
+        stats_.collisions.store(0, std::memory_order_relaxed);
+        stats_.stores.store(0, std::memory_order_relaxed);
+        stats_.overwrites.store(0, std::memory_order_relaxed);
         stats_.capacity = capacity_;
-        // Recalculate occupied entries
+
         size_t occ = 0;
-        for (const auto& entry : table_) {
-            if (!entry.is_empty()) occ++;
+        for (const auto& slot : table_) {
+            if (!slot.is_empty()) occ++;
         }
-        stats_.entries_occupied = occ;
+        stats_.entries_occupied.store(occ, std::memory_order_relaxed);
     }
 
     [[nodiscard]] size_t capacity() const noexcept { return capacity_; }
     [[nodiscard]] size_t mask() const noexcept { return mask_; }
-    [[nodiscard]] size_t memory_bytes() const noexcept { return capacity_ * sizeof(TTEntry); }
-    [[nodiscard]] const Stats& stats() const noexcept { return stats_; }
+    [[nodiscard]] size_t memory_bytes() const noexcept { return capacity_ * sizeof(TTAtomicSlot); }
+    [[nodiscard]] Stats stats() const noexcept { return stats_; }
     [[nodiscard]] double hit_rate() const noexcept { return stats_.hit_rate(); }
     [[nodiscard]] double occupancy() const noexcept { return stats_.occupancy(); }
 
+    /**
+     * @brief Packs score, best_move, depth, flag, and age into a single 64-bit word.
+     */
+    static constexpr uint64_t encode_data(Score score, Column best_move, uint8_t depth, TTFlag flag, uint8_t age) noexcept {
+        const uint64_t s = static_cast<uint64_t>(static_cast<uint32_t>(score));
+        const uint64_t bm = static_cast<uint64_t>(static_cast<uint8_t>(best_move));
+        const uint64_t d = static_cast<uint64_t>(depth);
+        const uint64_t f = static_cast<uint64_t>(static_cast<uint8_t>(flag));
+        const uint64_t a = static_cast<uint64_t>(age);
+        return (s & 0xFFFFFFFFULL) | (bm << 32) | (d << 40) | (f << 48) | (a << 56);
+    }
+
+    /**
+     * @brief Unpacks score, best_move, depth, flag, and age from a 64-bit word.
+     */
+    static constexpr void decode_data(uint64_t d, int32_t& score, uint8_t& best_move, uint8_t& depth, uint8_t& flag, uint8_t& age) noexcept {
+        score = static_cast<int32_t>(static_cast<uint32_t>(d & 0xFFFFFFFFULL));
+        best_move = static_cast<uint8_t>((d >> 32) & 0xFFULL);
+        depth = static_cast<uint8_t>((d >> 40) & 0xFFULL);
+        flag = static_cast<uint8_t>((d >> 48) & 0xFFULL);
+        age = static_cast<uint8_t>((d >> 56) & 0xFFULL);
+    }
+
+    // Direct access to underlying slot for advanced concurrency / unit testing
+    [[nodiscard]] const TTAtomicSlot& raw_slot(size_t index) const noexcept {
+        return table_[index & mask_];
+    }
+    [[nodiscard]] TTAtomicSlot& raw_slot(size_t index) noexcept {
+        return table_[index & mask_];
+    }
+
 private:
-    std::vector<TTEntry> table_;
+    std::vector<TTAtomicSlot> table_;
     size_t capacity_ = 0;
     size_t mask_ = 0;
     Stats stats_{};
