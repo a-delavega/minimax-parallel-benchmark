@@ -4,6 +4,7 @@
 #include "minimax/engines/lazy_smp_engine.hpp"
 #include "minimax/evaluators/complex_evaluator.hpp"
 #include "minimax/evaluators/simple_evaluator.hpp"
+#include "minimax/transposition/transposition_table.hpp"
 #include <memory>
 
 using namespace mmb;
@@ -116,3 +117,41 @@ TEST_CASE("LazySmpEngine: Multi-Threaded Search & Scaling", "[engine][lazy_smp]"
         REQUIRE(board.is_valid_move(res.best_move));
     }
 }
+
+TEST_CASE("LazySmpEngine: Shared Transposition Table Concurrency & Cutoffs (Subphase 4.6)", "[engine][lazy_smp][tt]") {
+    auto eval = std::make_shared<SimpleEvaluator>();
+    auto shared_tt = std::make_shared<TranspositionTable>(4); // 4 MB table
+    LazySmpEngine engine(eval, 4, shared_tt);
+
+    REQUIRE(engine.transposition_table() == shared_tt);
+    REQUIRE(std::string(engine.name()).find("Shared Transposition Table") != std::string::npos);
+
+    Board board;
+    board.make_move(3);
+    board.make_move(3);
+    board.make_move(2);
+    board.make_move(4);
+
+    const int depth = 6;
+    const SearchResult res = engine.search(board, depth);
+
+    REQUIRE(res.best_move >= 0);
+    REQUIRE(res.best_move < COLS);
+    REQUIRE(board.is_valid_move(res.best_move));
+    REQUIRE(res.nodes_visited > 0);
+
+    // Verify shared TT was actively populated and read across worker threads
+    const auto stats = shared_tt->stats();
+    REQUIRE(stats.probes > 0);
+    REQUIRE(stats.stores > 0);
+    REQUIRE(stats.hits > 0);
+    REQUIRE(stats.entries_occupied > 0);
+
+    // Second search on populated table should hit TT heavily
+    const uint64_t initial_hits = stats.hits;
+    const SearchResult res2 = engine.search(board, depth);
+    REQUIRE(res2.best_move == res.best_move);
+    REQUIRE(res2.score == res.score);
+    REQUIRE(shared_tt->stats().hits > initial_hits);
+}
+
