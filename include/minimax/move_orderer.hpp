@@ -26,11 +26,13 @@ public:
      * @brief Populate an array with legal moves ordered for maximum pruning efficiency.
      * @param board The current game board.
      * @param out_moves Array to write legal moves into.
+     * @param tt_move Optional candidate move suggested by Transposition Table (tested right after winning moves).
      * @return Number of legal moves populated in out_moves.
      */
     [[nodiscard]] static constexpr int get_ordered_moves(
         const Board& board, 
-        std::array<Column, COLS>& out_moves
+        std::array<Column, COLS>& out_moves,
+        Column tt_move = -1
     ) noexcept {
         int count = 0;
         const Player current = board.current_player;
@@ -56,14 +58,19 @@ public:
             out_moves[count++] = win_move;
         }
 
-        // 2. Urgent defensive block against immediate opponent win
-        if (block_move != -1 && block_move != win_move) {
+        // 2. Transposition Table best move recommendation (if valid and not already winning move)
+        if (tt_move >= 0 && tt_move < COLS && board.is_valid_move(tt_move) && tt_move != win_move) {
+            out_moves[count++] = tt_move;
+        }
+
+        // 3. Urgent defensive block against immediate opponent win
+        if (block_move != -1 && block_move != win_move && block_move != tt_move) {
             out_moves[count++] = block_move;
         }
 
-        // 3. Fill remaining legal moves in center-outward order
+        // 4. Fill remaining legal moves in center-outward order
         for (const Column col : ORDERED_COLUMNS) {
-            if (board.is_valid_move(col) && col != win_move && col != block_move) {
+            if (board.is_valid_move(col) && col != win_move && col != block_move && col != tt_move) {
                 out_moves[count++] = col;
             }
         }

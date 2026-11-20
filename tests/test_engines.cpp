@@ -92,3 +92,56 @@ TEST_CASE("Engines: AlphaBeta Pruning Efficiency", "[engines]") {
     const double ratio = static_cast<double>(res_ab.nodes_visited) / res_mm.nodes_visited;
     REQUIRE(ratio < 0.20);
 }
+
+TEST_CASE("Engines: AlphaBeta with Transposition Table Pruning & Equivalence", "[engines][tt]") {
+    auto eval = std::make_shared<SimpleEvaluator>();
+    AlphaBetaEngine ab_no_tt(eval);
+    auto tt = std::make_shared<TranspositionTable>(4);
+    AlphaBetaEngine ab_with_tt(eval, tt);
+
+    Board board;
+    board.make_move(3); // P1
+    board.make_move(3); // P2
+    board.make_move(2); // P1
+    board.make_move(4); // P2
+
+    for (int depth = 2; depth <= 6; ++depth) {
+        tt->clear();
+        const auto res_plain = ab_no_tt.search(board, depth);
+        const auto res_tt = ab_with_tt.search(board, depth);
+
+        // Mathematical equivalence: must agree on score and best move
+        REQUIRE(res_plain.score == res_tt.score);
+        REQUIRE(res_plain.best_move == res_tt.best_move);
+
+        // At depths >= 4, TT must achieve hits and reduce or equal node count
+        if (depth >= 4) {
+            REQUIRE(tt->stats().hits > 0);
+            REQUIRE(res_tt.nodes_visited <= res_plain.nodes_visited);
+        }
+    }
+}
+
+TEST_CASE("Engines: AlphaBeta TT Immediate Repeated Search Speedup", "[engines][tt]") {
+    auto eval = std::make_shared<SimpleEvaluator>();
+    auto tt = std::make_shared<TranspositionTable>(4);
+    AlphaBetaEngine ab(eval, tt);
+
+    Board board;
+    board.make_move(3);
+    board.make_move(2);
+    board.make_move(4);
+    board.make_move(3);
+
+    const int depth = 6;
+    const auto res_first = ab.search(board, depth);
+    REQUIRE(res_first.nodes_visited > 100);
+
+    // Second search on populated TT: should immediately leverage cached evaluations
+    const auto res_second = ab.search(board, depth);
+    REQUIRE(res_second.score == res_first.score);
+    REQUIRE(res_second.best_move == res_first.best_move);
+    REQUIRE(res_second.nodes_visited <= res_first.nodes_visited);
+    REQUIRE(tt->stats().hits > 0);
+}
+

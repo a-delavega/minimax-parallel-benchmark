@@ -78,9 +78,10 @@ public:
         const Board& board,
         int thread_id,
         int ply,
-        std::array<Column, COLS>& out_moves
+        std::array<Column, COLS>& out_moves,
+        Column tt_move = -1
     ) noexcept {
-        const int count = MoveOrderer::get_ordered_moves(board, out_moves);
+        const int count = MoveOrderer::get_ordered_moves(board, out_moves, tt_move);
 
         // Master thread or deep nodes or trivial branch counts keep canonical ordering
         if (thread_id <= 0 || ply > 2 || count <= 1) {

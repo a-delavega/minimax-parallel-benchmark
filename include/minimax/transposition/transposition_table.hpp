@@ -393,6 +393,24 @@ public:
     [[nodiscard]] double occupancy() const noexcept { return stats_.occupancy(); }
 
     /**
+     * @brief Normalizes mate scores to distance-independent root-relative scores before storing.
+     */
+    [[nodiscard]] static constexpr Score score_to_tt(Score score, int ply) noexcept {
+        if (score >= MATE_THRESHOLD) return score + ply;
+        if (score <= -MATE_THRESHOLD) return score - ply;
+        return score;
+    }
+
+    /**
+     * @brief Denormalizes stored mate scores back to current ply distance after probing.
+     */
+    [[nodiscard]] static constexpr Score score_from_tt(Score score, int ply) noexcept {
+        if (score >= MATE_THRESHOLD) return score - ply;
+        if (score <= -MATE_THRESHOLD) return score + ply;
+        return score;
+    }
+
+    /**
      * @brief Packs score, best_move, depth, flag, and age into a single 64-bit word.
      */
     static constexpr uint64_t encode_data(Score score, Column best_move, uint8_t depth, TTFlag flag, uint8_t age) noexcept {
