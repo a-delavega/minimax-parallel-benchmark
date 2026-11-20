@@ -33,6 +33,13 @@ add_executable(mmb_tournament tournament_benchmark.cpp)
 target_link_libraries(mmb_tournament PRIVATE minimax_core)
 target_compile_features(mmb_tournament PRIVATE cxx_std_20)
 
+# ============================================================
+# Transposition Table & Zobrist Hashing Benchmark (Subphase 4.7)
+# ============================================================
+add_executable(mmb_transposition transposition_benchmark.cpp)
+target_link_libraries(mmb_transposition PRIVATE minimax_core)
+target_compile_features(mmb_transposition PRIVATE cxx_std_20)
+
 # Optional Google Benchmark integration when requested
 # FetchContent is only executed if MMB_USE_GOOGLE_BENCHMARK is ON
 option(MMB_USE_GOOGLE_BENCHMARK "Enable Google Benchmark integration" OFF)
