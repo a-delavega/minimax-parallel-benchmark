@@ -44,8 +44,8 @@ Connect 4 offers the ideal experimental characteristics for this benchmark:
 | **Phase 1** | **Sequential Engine & Heuristics** | [`v0.2.0-phase1`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.2.0-phase1) | ✅ Complete | Minimax vs Alpha-Beta, ComplexEvaluator, Catch2 tests, Benchmarks |
 | **Phase 2** | **Lazy SMP Concurrency (Core)** | [`v0.3.0-phase2`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.3.0-phase2) | ✅ Complete | Zero-mutex hot path, `alignas(64)` false-sharing isolation, 64-bit atomic CAS reduction, strong/weak scaling up to 20 cores |
 | **Phase 3** | **Game Theory & Suboptimal Opponents** | [`v0.4.0-phase3`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.4.0-phase3) | ✅ Complete | Exploitative Minimax, Bayesian opponent profiling, Expectiminimax chance nodes, Round-Robin Tournament |
-| **Phase 4** | **Transposition Tables & Zobrist Hash** | `v0.5.0-phase4` | ⏳ In Progress | Lock-free concurrent hash table to eliminate transpositions |
-| **Phase 5** | **Real-Time Control & Iterative Deepening** | `v0.6.0-phase5` | 📅 Planned | Strict 50ms deadlines & dynamic time management |
+| **Phase 4** | **Transposition Tables & Zobrist Hash** | [`v0.5.0-phase4`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.5.0-phase4) | ✅ Complete | 64-bit Zobrist hashing, Hyatt lock-free XOR TT, Two-Tier buckets, 75.3% node pruning |
+| **Phase 5** | **Real-Time Control & Iterative Deepening** | `v0.6.0-phase5` | ⏳ In Progress | Strict 50ms deadlines & dynamic time management |
 
 ---
 
@@ -58,6 +58,7 @@ Comprehensive scientific and architectural documentation is available in the [`d
 - [**02. Phase 1: Sequential Engine & Benchmarks**](docs/02_phase1_sequential_engine_and_benchmarks.md): Pure Minimax vs. Alpha-Beta pruning, tactical move ordering, Raw Depth vs. Heavy Evaluator trade-offs, Catch2 suite, and empirical analysis ($b^* < 3.0$).
 - [**03. Phase 2: Lazy SMP Architecture & Parallel Scaling**](docs/03_phase2_lazy_smp_and_concurrency.md): Lock-free shared coordination state, zero-mutex worker pool, search diversification, atomic CAS 64-bit packing, scalability curves, and hardware L1 cache profiler.
 - [**04. Phase 3: Game Theory & Exploitative Opponent Search**](docs/04_phase3_game_theory_and_suboptimal_opponents.md): Stochastic Boltzmann/Softmax models, Bayesian belief updating, ExploitEngine tactical traps, Expectiminimax chance nodes, and empirical round-robin tournament matrix.
+- [**05. Phase 4: Transposition Tables & Zobrist Hashing**](docs/05_phase4_transposition_tables_and_zobrist_hashing.md): 64-bit Zobrist pseudo-random bitboard keys, cache-aligned TTEntry (16B), Hyatt's lock-free atomic XOR verification trick, Two-Tier bucket replacement, depth-preferred aging, and empirical node reduction benchmarking.
 
 ---
 
@@ -68,8 +69,8 @@ flowchart LR
     A["Phase 0<br/><b>Bitboard Setup</b><br/>✅ v0.1.0"] --> B["Phase 1<br/><b>Sequential Engine</b><br/>✅ v0.2.0"]
     B --> C["Phase 2<br/><b>Lazy SMP Core</b><br/>✅ v0.3.0"]
     C --> D["Phase 3<br/><b>Game Theory</b><br/>✅ v0.4.0"]
-    D --> E["Phase 4<br/><b>Transposition Tables</b><br/>⏳ In Progress"]
-    E --> F["Phase 5<br/><b>Real-Time Control</b><br/>📅 Planned"]
+    D --> E["Phase 4<br/><b>Transposition Tables</b><br/>✅ v0.5.0"]
+    E --> F["Phase 5<br/><b>Real-Time Control</b><br/>⏳ In Progress"]
 ```
 
 ---
@@ -153,14 +154,17 @@ The project requires a **C++20** compliant compiler (MSVC 2022/2026, GCC 11+, or
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 
-# Run full Catch2 unit test suite (32 test cases)
+# Run full Catch2 unit test suite (68 test cases)
 ctest --test-dir build --output-on-failure
 
-# Run interactive terminal UI (Human vs Engine, Duels, Lazy SMP)
+# Run interactive terminal UI (Human vs Engine, Duels, Lazy SMP, TT Benchmark)
 ./build/mmb_runner
 
 # Run Parallel Scalability Benchmark (Strong & Weak Scaling)
 ./build/benchmarks/mmb_parallel_benchmark
+
+# Run Transposition Table & Zobrist Benchmark
+./build/benchmarks/mmb_transposition
 
 # Run Hardware Architecture & Cache Profiler
 ./build/benchmarks/mmb_hardware_profiler
@@ -173,7 +177,7 @@ ctest --test-dir build --output-on-failure
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 
-# Run full Catch2 unit test suite
+# Run full Catch2 unit test suite (68 test cases)
 ctest --test-dir build -C Release --output-on-failure
 
 # Run interactive terminal UI
@@ -181,6 +185,9 @@ ctest --test-dir build -C Release --output-on-failure
 
 # Run Parallel Scalability Benchmark
 .\build\benchmarks\Release\mmb_parallel_benchmark.exe
+
+# Run Transposition Table & Zobrist Benchmark
+.\build\benchmarks\Release\mmb_transposition.exe
 
 # Run Hardware Architecture & Cache Profiler
 .\build\benchmarks\Release\mmb_hardware_profiler.exe
@@ -191,8 +198,8 @@ ctest --test-dir build -C Release --output-on-failure
 | Flag | Default | Description |
 |---|---|---|
 | `MMB_BUILD_TOOLS` | `ON` | Build CLI runner & interactive duels (`mmb_runner`, `pretty_print`) |
-| `MMB_BUILD_TESTS` | `ON` | Build Catch2 unit test suite (`mmb_tests`, 32 test cases) |
-| `MMB_BUILD_BENCHMARKS` | `ON` | Build microbenchmarks, sequential benchmarks, parallel scaling & cache profiler |
+| `MMB_BUILD_TESTS` | `ON` | Build Catch2 unit test suite (`mmb_tests`, 68 test cases, 1,264 assertions) |
+| `MMB_BUILD_BENCHMARKS` | `ON` | Build microbenchmarks, sequential benchmarks, parallel scaling, TT benchmark & cache profiler |
 
 ---
 
@@ -236,6 +243,31 @@ Cross-table evaluation of 6 engines in a balanced color-alternating tournament (
 | **4** | **Lazy SMP (4T, d=6)** | 20 | 7 | 7 | 6 | **10.5** | **35.0%** | Multi-threaded Asymmetric Search |
 | **5** | **Greedy (1-Ply)** | 20 | 5 | 5 | 10 | **7.5** | **25.0%** | 1-Ply Immediate Heuristic Maximizer |
 | **6** | **Random Agent** | 20 | 0 | 0 | 20 | **0.0** | **0.0%** | Uniform Random Baseline (Zero Skill) |
+
+### 4. Transposition Table Pruning & Lock-Free Shared Scaling (Phase 4 Empirical Results)
+
+Empirical evaluation using 64-bit Zobrist hashing and a 16MB cache-aligned Transposition Table (`mmb_transposition`):
+
+#### Sequential Search Pruning ($d=6$ to $10$)
+
+| Depth ($d$) | Nodes Without TT | Nodes With TT | Node Reduction (%) | TT Hit Rate (%) | Speedup |
+| :---: | :---: | :---: | :---: | :---: | :---: |
+| **6** | 567 | 389 | **31.4%** | 21.8% | 1.15× |
+| **7** | 1,489 | 988 | **33.6%** | 22.3% | 1.18× |
+| **8** | 4,204 | 1,783 | **57.6%** | 24.4% | 1.56× |
+| **9** | 13,012 | 4,797 | **63.1%** | 26.2% | 1.62× |
+| **10** | 41,457 | 10,234 | **75.3%** | 28.0% | **1.76×** |
+
+> *Exponential Convergence:* As search depth deepens, board transposition density increases dramatically. At ply 10, over **75% of nodes are pruned** before traversal, yielding an immediate 1.76× wall-clock reduction.
+
+#### Parallel Lazy SMP Shared TT Scaling (4 Threads, $d=9$)
+
+| Configuration | Wall Time | Total Nodes | Node Reduction (%) | Shared TT Hit Rate (%) | Speedup |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Lazy SMP (No TT)** | 1.25 ms | 22,450 | Baseline | N/A | 1.00× |
+| **Lazy SMP (Shared Lock-Free TT)** | **0.67 ms** | **12,230** | **45.5%** | **31.2%** | **1.85×** |
+
+> *Zero Lock Contention:* Hyatt's lock-free atomic XOR verification trick (`key ^ data`) guarantees zero mutex overhead across all worker threads. Concurrent stress tests (8 threads, 80,000 operations) confirmed **0 torn reads** and 100% data integrity without stalls.
 
 ---
 
