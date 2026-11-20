@@ -8,6 +8,7 @@
 #include "minimax/evaluators/simple_evaluator.hpp"
 #include "minimax/opponent/heuristic_agents.hpp"
 #include "minimax/tournament/tournament_harness.hpp"
+#include "minimax/transposition/transposition_table.hpp"
 #include "minimax/ui/board_printer.hpp"
 #include <chrono>
 #include <iomanip>
@@ -322,6 +323,45 @@ void run_full_tournament(int games_per_pair = 4) {
     std::cout << harness.format_markdown(records, standings) << std::endl;
 }
 
+void run_transposition_demo() {
+    std::cout << "\n============================================================" << std::endl;
+    std::cout << "      TRANSPOSITION TABLE & ZOBRIST HASHING DEMO (PHASE 4)  " << std::endl;
+    std::cout << "============================================================" << std::endl;
+
+    auto eval = std::make_shared<SimpleEvaluator>();
+    auto tt = std::make_shared<TranspositionTable>(16);
+
+    AlphaBetaEngine engine_no_tt(eval);
+    AlphaBetaEngine engine_with_tt(eval, tt);
+
+    Board board;
+    board.make_move(3);
+    board.make_move(3);
+    board.make_move(2);
+    board.make_move(4);
+
+    std::cout << "Evaluating middle-game position at depths 6 to 9 with and without TT (16 MB)...\n" << std::endl;
+
+    for (int depth = 6; depth <= 9; ++depth) {
+        tt->clear();
+        const auto res_no_tt = engine_no_tt.search(board, depth);
+        const auto res_tt = engine_with_tt.search(board, depth);
+
+        const double saved_pct = (res_no_tt.nodes_visited > 0)
+            ? (100.0 * static_cast<double>(res_no_tt.nodes_visited - res_tt.nodes_visited) / res_no_tt.nodes_visited)
+            : 0.0;
+        const double speedup = (res_tt.duration.count() > 0)
+            ? (static_cast<double>(res_no_tt.duration.count()) / res_tt.duration.count())
+            : 1.0;
+
+        std::cout << "  [Depth " << depth << "] No TT: " << res_no_tt.nodes_visited << " nodes (" << res_no_tt.duration.count() << " us)"
+                  << " | With TT: " << res_tt.nodes_visited << " nodes (" << res_tt.duration.count() << " us)"
+                  << " | Saved: " << std::fixed << std::setprecision(1) << saved_pct << "%"
+                  << " | Speedup: " << std::fixed << std::setprecision(2) << speedup << "x"
+                  << " | Hits: " << tt->stats().hits << std::endl;
+    }
+}
+
 void print_help(const char* prog) {
     std::cout << "Usage: " << prog << " [options]\n\n"
               << "Available options:\n"
@@ -331,6 +371,7 @@ void print_help(const char* prog) {
               << "  -m, --match [N]   Run an automated match of N alternating games (default: 6)\n"
               << "  -p, --parallel    Run Lazy SMP parallel search duel against Alpha-Beta\n"
               << "  -t, --tournament  Run multi-engine round-robin tournament\n"
+              << "  -x, --transposition Run Transposition Table pruning & cache demo (Phase 4)\n"
               << "  --help            Show this help message\n"
               << "\nWithout arguments, opens the interactive console menu." << std::endl;
 }
@@ -394,6 +435,10 @@ int main(int argc, char* argv[]) {
             run_full_tournament(games_per_pair);
             return 0;
         }
+        if (arg == "--transposition" || arg == "-x") {
+            run_transposition_demo();
+            return 0;
+        }
         if (arg == "--help") {
             print_help(argv[0]);
             return 0;
@@ -413,6 +458,7 @@ int main(int argc, char* argv[]) {
                   << "  [4] Telemetry Smoke Test (includes Lazy SMP 4-thread)\n"
                   << "  [5] Parallel Lazy SMP Benchmark Duel\n"
                   << "  [6] Multi-Engine Round-Robin Tournament (Phase 3)\n"
+                  << "  [7] Transposition Table Pruning & Cache Demo (Phase 4)\n"
                   << "  [0] Exit\n"
                   << "Choice: ";
         
@@ -449,6 +495,8 @@ int main(int argc, char* argv[]) {
                       << " | " << static_cast<uint64_t>(res_par.nodes_per_second()) << " NPS\n";
         } else if (choice == "6") {
             run_full_tournament(4);
+        } else if (choice == "7") {
+            run_transposition_demo();
         } else if (choice == "0" || choice == "q" || choice == "Q") {
             std::cout << "Exiting program..." << std::endl;
             break;
