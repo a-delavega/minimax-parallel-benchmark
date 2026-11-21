@@ -14,6 +14,7 @@ struct SearchResult {
     uint64_t nodes_visited = 0;        // Total nodes evaluated during search
     std::chrono::microseconds duration{0}; // Elapsed wall-clock time
     int depth_reached = 0;             // Depth level reached by search
+    int iterations_completed = 0;      // Number of iterative deepening depth levels completed
 
     [[nodiscard]] double nodes_per_second() const noexcept {
         const double seconds = duration.count() / 1'000'000.0;
