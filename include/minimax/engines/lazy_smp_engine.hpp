@@ -65,25 +65,27 @@ public:
         return m_tt;
     }
 
-    [[nodiscard]] SearchResult search(const Board& board, int max_depth) override {
+    /**
+     * @brief Execute a single parallel search depth across all worker threads.
+     * @param board Starting board position.
+     * @param depth Base search depth.
+     * @return SearchResult with reduced best move and telemetry across workers.
+     */
+    [[nodiscard]] SearchResult search_depth(const Board& board, int depth) {
         SearchResult quick_result;
-        quick_result.depth_reached = max_depth;
+        quick_result.depth_reached = depth;
 
         // Terminal or shallow check
-        if (board.is_draw() || board.has_won(Player::Player1) || board.has_won(Player::Player2) || max_depth <= 0) {
+        if (board.is_draw() || board.has_won(Player::Player1) || board.has_won(Player::Player2) || depth <= 0) {
             quick_result.score = m_evaluator->evaluate(board, board.current_player, 0);
             return quick_result;
         }
 
         const auto start_time = std::chrono::high_resolution_clock::now();
 
-        if (m_tt) {
-            m_tt->new_search();
-        }
-
         // Dispatch parallel Lazy SMP search across worker threads
-        m_pool.execute([this, &board, max_depth](int thread_id, WorkerData& data, SharedSearchState& shared) {
-            run_worker(thread_id, board, max_depth, data, shared);
+        m_pool.execute([this, &board, depth](int thread_id, WorkerData& data, SharedSearchState& shared) {
+            run_worker(thread_id, board, depth, data, shared);
         }, m_shared_state);
 
         const auto end_time = std::chrono::high_resolution_clock::now();
@@ -92,7 +94,7 @@ public:
         // Aggregate results and telemetry across all threads
         SearchResult result = ResultReducer::reduce(m_pool, m_shared_state, elapsed);
         if (result.depth_reached <= 0) {
-            result.depth_reached = max_depth;
+            result.depth_reached = depth;
         }
 
         // Defensive fallback: ensure engine never returns an illegal move (-1) on a playable board
@@ -104,6 +106,59 @@ public:
             }
         }
         return result;
+    }
+
+    [[nodiscard]] SearchResult search(const Board& board, int max_depth) override {
+        if (m_tt) {
+            m_tt->new_search();
+        }
+        return search_depth(board, max_depth);
+    }
+
+    [[nodiscard]] SearchResult search_iterative(
+        const Board& board, 
+        int max_depth, 
+        IterationCallback callback = nullptr
+    ) override {
+        SearchResult cumulative_result;
+        cumulative_result.depth_reached = 0;
+
+        if (board.is_draw() || board.has_won(Player::Player1) || board.has_won(Player::Player2) || max_depth <= 0) {
+            cumulative_result.score = m_evaluator->evaluate(board, board.current_player, 0);
+            return cumulative_result;
+        }
+
+        const auto start_total = std::chrono::high_resolution_clock::now();
+
+        if (m_tt) {
+            m_tt->new_search(); // Increments generational age once for the multi-layer parallel search
+        }
+
+        uint64_t total_nodes = 0;
+
+        for (int d = 1; d <= max_depth; ++d) {
+            SearchResult iter_res = search_depth(board, d);
+
+            total_nodes += iter_res.nodes_visited;
+            cumulative_result.best_move = iter_res.best_move;
+            cumulative_result.score = iter_res.score;
+            cumulative_result.depth_reached = d;
+            cumulative_result.iterations_completed = d;
+            cumulative_result.nodes_visited = total_nodes;
+
+            const auto now = std::chrono::high_resolution_clock::now();
+            cumulative_result.duration = std::chrono::duration_cast<std::chrono::microseconds>(now - start_total);
+
+            if (callback && !callback(cumulative_result)) {
+                break; // Callback requested cooperative search abort
+            }
+
+            if (std::abs(iter_res.score) >= SCORE_WIN - 100) {
+                break; // Forced mate found
+            }
+        }
+
+        return cumulative_result;
     }
 
     [[nodiscard]] const char* name() const noexcept override {
