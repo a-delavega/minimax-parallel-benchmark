@@ -88,7 +88,8 @@ public:
 
         // Check for immediate winning move
         for (int i = 0; i < legal_moves; ++i) {
-            if (board.is_winning_move(moves[static_cast<std::size_t>(i)], current)) {
+            const Column col = moves[static_cast<std::size_t>(i)];
+            if (board.is_winning_move(col)) {
                 return settings_.min_complexity_factor; // Immediate forced win: don't burn clock
             }
         }
@@ -96,7 +97,8 @@ public:
         // Check for urgent defensive block
         int blocks_needed = 0;
         for (int i = 0; i < legal_moves; ++i) {
-            if (board.is_winning_move(moves[static_cast<std::size_t>(i)], opp)) {
+            const Column col = moves[static_cast<std::size_t>(i)];
+            if (board.is_winning_move_for(opp, col)) {
                 blocks_needed++;
             }
         }
@@ -106,7 +108,7 @@ public:
         }
 
         // Center contest complexity: moves in columns 2, 3, 4 signify sharp opening/midgame struggles
-        const int moves_played = board.move_count();
+        const int moves_played = static_cast<int>(board.moves_played);
         if (moves_played >= 4 && moves_played <= 20) {
             return 1.4; // Midgame tactical peak
         }
@@ -131,7 +133,7 @@ public:
         }
 
         // DynamicGameClock mode
-        const int moves_played = board.move_count();
+        const int moves_played = static_cast<int>(board.moves_played);
         // Connect 4 has 42 cells total; typical games conclude within 25-35 moves
         const int estimated_moves_left = std::max(1, 40 - moves_played);
 

@@ -28,6 +28,7 @@ add_executable(mmb_tests
     test_transposition_table.cpp
     test_iterative_deepening.cpp
     test_aspiration_window.cpp
+    test_time_manager.cpp
 )
 
 target_link_libraries(mmb_tests PRIVATE minimax_core Catch2::Catch2WithMain)

@@ -2,6 +2,8 @@
 
 #include "minimax/board.hpp"
 #include "minimax/search_result.hpp"
+#include "minimax/time/time_manager.hpp"
+#include <chrono>
 #include <functional>
 
 namespace mmb {
@@ -51,6 +53,37 @@ public:
             }
         }
         return final_res;
+    }
+
+    /**
+     * @brief Find best move using dynamic time-budgeted iterative deepening search.
+     * @param board Starting board position.
+     * @param time_mgr Configured TimeManager instance.
+     * @param max_depth Absolute maximum depth cap (defaults to 42 plies).
+     * @return SearchResult containing best move found within the allotted time.
+     */
+    [[nodiscard]] virtual SearchResult search_timed(
+        const Board& board,
+        TimeManager& time_mgr,
+        int max_depth = 42
+    ) {
+        time_mgr.start_turn(board);
+        auto last_iter_start = std::chrono::high_resolution_clock::now();
+        std::chrono::microseconds last_iter_duration{0};
+
+        SearchResult res = search_iterative(
+            board,
+            max_depth,
+            [&](const SearchResult& iter_res) {
+                const auto now = std::chrono::high_resolution_clock::now();
+                last_iter_duration = std::chrono::duration_cast<std::chrono::microseconds>(now - last_iter_start);
+                last_iter_start = now;
+                return time_mgr.should_start_next_depth(iter_res.depth_reached, last_iter_duration);
+            }
+        );
+
+        time_mgr.complete_turn(time_mgr.elapsed());
+        return res;
     }
 
     /**
