@@ -4,6 +4,7 @@
 #include "minimax/engine.hpp"
 #include "minimax/evaluator.hpp"
 #include "minimax/move_orderer.hpp"
+#include "minimax/search/aspiration_window.hpp"
 #include "minimax/search_result.hpp"
 #include "minimax/transposition/transposition_table.hpp"
 #include <algorithm>
@@ -40,6 +41,31 @@ public:
 
     [[nodiscard]] std::shared_ptr<TranspositionTable> transposition_table() const noexcept {
         return m_tt;
+    }
+
+    void set_aspiration_window(bool enabled, Score initial_delta = 50) noexcept {
+        m_use_aspiration = enabled;
+        m_aspiration_config.initial_delta = initial_delta;
+    }
+
+    [[nodiscard]] bool aspiration_window_enabled() const noexcept {
+        return m_use_aspiration;
+    }
+
+    void set_aspiration_config(const AspirationConfig& config) noexcept {
+        m_aspiration_config = config;
+    }
+
+    [[nodiscard]] const AspirationConfig& aspiration_config() const noexcept {
+        return m_aspiration_config;
+    }
+
+    [[nodiscard]] const AspirationStats& aspiration_stats() const noexcept {
+        return m_aspiration_stats;
+    }
+
+    void clear_aspiration_stats() noexcept {
+        m_aspiration_stats.reset();
     }
 
     /**
@@ -169,15 +195,30 @@ public:
         }
 
         uint64_t total_nodes = 0;
+        Score prev_score = 0;
 
         for (int d = 1; d <= max_depth; ++d) {
-            SearchResult iter_res = search_bounded(
-                board, 
-                d, 
-                std::numeric_limits<Score>::lowest() + 1, 
-                std::numeric_limits<Score>::max() - 1
-            );
+            SearchResult iter_res;
+            if (m_use_aspiration && d >= m_aspiration_config.min_depth) {
+                iter_res = AspirationSearcher::search(
+                    d, 
+                    prev_score, 
+                    [this, &board](int depth, Score a, Score b) {
+                        return search_bounded(board, depth, a, b);
+                    },
+                    m_aspiration_config,
+                    &m_aspiration_stats
+                );
+            } else {
+                iter_res = search_bounded(
+                    board, 
+                    d, 
+                    std::numeric_limits<Score>::lowest() + 1, 
+                    std::numeric_limits<Score>::max() - 1
+                );
+            }
 
+            prev_score = iter_res.score;
             total_nodes += iter_res.nodes_visited;
             cumulative_result.best_move = iter_res.best_move;
             cumulative_result.score = iter_res.score;
@@ -352,6 +393,9 @@ private:
 
     std::shared_ptr<const IEvaluator> m_evaluator;
     std::shared_ptr<TranspositionTable> m_tt;
+    bool m_use_aspiration = true;
+    AspirationConfig m_aspiration_config{};
+    AspirationStats m_aspiration_stats{};
 };
 
 } // namespace mmb

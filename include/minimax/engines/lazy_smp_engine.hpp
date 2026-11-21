@@ -8,6 +8,7 @@
 #include "minimax/concurrency/worker_pool.hpp"
 #include "minimax/engine.hpp"
 #include "minimax/evaluator.hpp"
+#include "minimax/search/aspiration_window.hpp"
 #include "minimax/search_result.hpp"
 #include "minimax/transposition/transposition_table.hpp"
 #include <algorithm>
@@ -65,13 +66,45 @@ public:
         return m_tt;
     }
 
+    void set_aspiration_window(bool enabled, Score initial_delta = 50) noexcept {
+        m_use_aspiration = enabled;
+        m_aspiration_config.initial_delta = initial_delta;
+    }
+
+    [[nodiscard]] bool aspiration_window_enabled() const noexcept {
+        return m_use_aspiration;
+    }
+
+    void set_aspiration_config(const AspirationConfig& config) noexcept {
+        m_aspiration_config = config;
+    }
+
+    [[nodiscard]] const AspirationConfig& aspiration_config() const noexcept {
+        return m_aspiration_config;
+    }
+
+    [[nodiscard]] const AspirationStats& aspiration_stats() const noexcept {
+        return m_aspiration_stats;
+    }
+
+    void clear_aspiration_stats() noexcept {
+        m_aspiration_stats.reset();
+    }
+
     /**
      * @brief Execute a single parallel search depth across all worker threads.
      * @param board Starting board position.
      * @param depth Base search depth.
+     * @param base_alpha Base alpha bound.
+     * @param base_beta Base beta bound.
      * @return SearchResult with reduced best move and telemetry across workers.
      */
-    [[nodiscard]] SearchResult search_depth(const Board& board, int depth) {
+    [[nodiscard]] SearchResult search_depth(
+        const Board& board, 
+        int depth,
+        Score base_alpha = std::numeric_limits<Score>::lowest() + 1,
+        Score base_beta = std::numeric_limits<Score>::max() - 1
+    ) {
         SearchResult quick_result;
         quick_result.depth_reached = depth;
 
@@ -84,8 +117,8 @@ public:
         const auto start_time = std::chrono::high_resolution_clock::now();
 
         // Dispatch parallel Lazy SMP search across worker threads
-        m_pool.execute([this, &board, depth](int thread_id, WorkerData& data, SharedSearchState& shared) {
-            run_worker(thread_id, board, depth, data, shared);
+        m_pool.execute([this, &board, depth, base_alpha, base_beta](int thread_id, WorkerData& data, SharedSearchState& shared) {
+            run_worker(thread_id, board, depth, data, shared, base_alpha, base_beta);
         }, m_shared_state);
 
         const auto end_time = std::chrono::high_resolution_clock::now();
@@ -135,10 +168,25 @@ public:
         }
 
         uint64_t total_nodes = 0;
+        Score prev_score = 0;
 
         for (int d = 1; d <= max_depth; ++d) {
-            SearchResult iter_res = search_depth(board, d);
+            SearchResult iter_res;
+            if (m_use_aspiration && d >= m_aspiration_config.min_depth) {
+                iter_res = AspirationSearcher::search(
+                    d, 
+                    prev_score, 
+                    [this, &board](int depth, Score a, Score b) {
+                        return search_depth(board, depth, a, b);
+                    },
+                    m_aspiration_config,
+                    &m_aspiration_stats
+                );
+            } else {
+                iter_res = search_depth(board, d);
+            }
 
+            prev_score = iter_res.score;
             total_nodes += iter_res.nodes_visited;
             cumulative_result.best_move = iter_res.best_move;
             cumulative_result.score = iter_res.score;
@@ -173,13 +221,23 @@ private:
         const Board& root_board,
         int base_depth,
         WorkerData& data,
-        SharedSearchState& shared
+        SharedSearchState& shared,
+        Score base_alpha = std::numeric_limits<Score>::lowest() + 1,
+        Score base_beta = std::numeric_limits<Score>::max() - 1
     ) const noexcept {
         const ThreadSearchConfig cfg = SearchDiversifier::configure(thread_id, base_depth);
         const Player pov = root_board.current_player;
 
-        Score alpha = std::numeric_limits<Score>::lowest() + 1;
-        const Score beta = std::numeric_limits<Score>::max() - 1;
+        Score alpha = base_alpha;
+        Score beta = base_beta;
+        if (thread_id > 0 && cfg.aspiration_delta != 0) {
+            if (alpha > std::numeric_limits<Score>::lowest() + 1000) {
+                alpha = std::max<Score>(alpha - cfg.aspiration_delta, std::numeric_limits<Score>::lowest() + 1);
+            }
+            if (beta < std::numeric_limits<Score>::max() - 1000) {
+                beta = std::min<Score>(beta + cfg.aspiration_delta, std::numeric_limits<Score>::max() - 1);
+            }
+        }
         const Score orig_alpha = alpha;
 
         // Query TT for root move recommendation
@@ -400,6 +458,9 @@ private:
     WorkerPool m_pool;
     SharedSearchState m_shared_state;
     std::shared_ptr<TranspositionTable> m_tt;
+    bool m_use_aspiration = true;
+    AspirationConfig m_aspiration_config{};
+    AspirationStats m_aspiration_stats{};
 };
 
 } // namespace mmb
