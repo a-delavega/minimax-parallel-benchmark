@@ -91,6 +91,10 @@ public:
         m_aspiration_stats.reset();
     }
 
+    void set_stop_flag(std::atomic<bool>* flag) noexcept override {
+        m_stop_flag = flag;
+    }
+
     /**
      * @brief Execute a single parallel search depth across all worker threads.
      * @param board Starting board position.
@@ -112,6 +116,11 @@ public:
         if (board.is_draw() || board.has_won(Player::Player1) || board.has_won(Player::Player2) || depth <= 0) {
             quick_result.score = m_evaluator->evaluate(board, board.current_player, 0);
             return quick_result;
+        }
+
+        m_shared_state.reset();
+        if (m_stop_flag && m_stop_flag->load(std::memory_order_relaxed)) {
+            m_shared_state.request_stop();
         }
 
         const auto start_time = std::chrono::high_resolution_clock::now();
@@ -171,6 +180,10 @@ public:
         Score prev_score = 0;
 
         for (int d = 1; d <= max_depth; ++d) {
+            if (m_stop_flag && m_stop_flag->load(std::memory_order_relaxed)) {
+                break;
+            }
+
             SearchResult iter_res;
             if (m_use_aspiration && d >= m_aspiration_config.min_depth) {
                 iter_res = AspirationSearcher::search(
@@ -184,6 +197,14 @@ public:
                 );
             } else {
                 iter_res = search_depth(board, d);
+            }
+
+            const bool external_stop = (m_stop_flag && m_stop_flag->load(std::memory_order_relaxed));
+            const bool master_completed = m_pool.worker_data(0).search_completed;
+
+            if (external_stop || !master_completed) {
+                // Interrupted mid-iteration; retain cumulative_result from completed iterations
+                break;
             }
 
             prev_score = iter_res.score;
@@ -203,6 +224,14 @@ public:
 
             if (std::abs(iter_res.score) >= SCORE_WIN - 100) {
                 break; // Forced mate found
+            }
+        }
+
+        if (cumulative_result.best_move == -1) {
+            std::array<Column, COLS> fallback_moves{};
+            const int count = MoveOrderer::get_ordered_moves(board, fallback_moves);
+            if (count > 0) {
+                cumulative_result.best_move = fallback_moves[0];
             }
         }
 
@@ -257,7 +286,8 @@ private:
         bool interrupted = false;
 
         for (int i = 0; i < num_moves; ++i) {
-            if (shared.should_stop()) {
+            if (shared.should_stop() || (m_stop_flag && m_stop_flag->load(std::memory_order_relaxed))) {
+                shared.request_stop();
                 interrupted = true;
                 break;
             }
@@ -280,7 +310,8 @@ private:
                 shared
             );
 
-            if (shared.should_stop()) {
+            if (shared.should_stop() || (m_stop_flag && m_stop_flag->load(std::memory_order_relaxed))) {
+                shared.request_stop();
                 interrupted = true;
                 break;
             }
@@ -328,9 +359,12 @@ private:
         WorkerData& data,
         SharedSearchState& shared
     ) const noexcept {
-        // Fast periodic poll of the lock-free stop signal
-        if ((data.nodes_visited & 1023ULL) == 0 && shared.should_stop()) {
-            return 0;
+        // Fast periodic poll of the lock-free stop signal (every 2048 nodes)
+        if ((data.nodes_visited & NODE_CHECK_MASK) == 0) {
+            if (shared.should_stop() || (m_stop_flag && m_stop_flag->load(std::memory_order_relaxed))) {
+                shared.request_stop();
+                return 0;
+            }
         }
 
         const Player current = board.current_player;
@@ -461,6 +495,7 @@ private:
     bool m_use_aspiration = true;
     AspirationConfig m_aspiration_config{};
     AspirationStats m_aspiration_stats{};
+    std::atomic<bool>* m_stop_flag = nullptr;
 };
 
 } // namespace mmb
