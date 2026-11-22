@@ -8,6 +8,7 @@
 #include "minimax/evaluators/simple_evaluator.hpp"
 #include "minimax/opponent/heuristic_agents.hpp"
 #include "minimax/tournament/tournament_harness.hpp"
+#include "minimax/time/time_manager.hpp"
 #include "minimax/transposition/transposition_table.hpp"
 #include "minimax/ui/board_printer.hpp"
 #include <chrono>
@@ -362,6 +363,57 @@ void run_transposition_demo() {
     }
 }
 
+void run_blitz_demo() {
+    std::cout << "\n============================================================" << std::endl;
+    std::cout << "      REAL-TIME BLITZ SEARCH & TIME-BUDGET DEMO (PHASE 5)   " << std::endl;
+    std::cout << "============================================================" << std::endl;
+
+    auto eval = std::make_shared<ComplexEvaluator>();
+    auto tt = std::make_shared<TranspositionTable>(4);
+
+    AlphaBetaEngine engine_ab(eval, tt);
+    const unsigned int hw = std::thread::hardware_concurrency();
+    const std::size_t smp_threads = (hw >= 4) ? 4 : 2;
+    LazySmpEngine engine_smp(eval, smp_threads, tt);
+
+    Board board;
+    board.make_move(3);
+    board.make_move(3);
+
+    const std::vector<int> budgets = {25, 50, 100};
+    std::cout << "Testing real-time deadline adherence across budgets (25ms, 50ms, 100ms)...\n" << std::endl;
+
+    for (int budget_ms : budgets) {
+        TimeSettings settings;
+        settings.mode = TimeMode::FixedPerMove;
+        settings.fixed_time_per_move = std::chrono::milliseconds(budget_ms);
+        settings.safety_buffer = std::chrono::milliseconds(2);
+
+        TimeManager tm_ab(settings);
+        TimeManager tm_smp(settings);
+
+        const auto t0 = std::chrono::high_resolution_clock::now();
+        const auto res_ab = engine_ab.search_timed(board, tm_ab, 30);
+        const auto t1 = std::chrono::high_resolution_clock::now();
+        const double el_ab = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+        const auto t2 = std::chrono::high_resolution_clock::now();
+        const auto res_smp = engine_smp.search_timed(board, tm_smp, 30);
+        const auto t3 = std::chrono::high_resolution_clock::now();
+        const double el_smp = std::chrono::duration<double, std::milli>(t3 - t2).count();
+
+        std::cout << "  [Budget " << budget_ms << "ms]\n"
+                  << "    AlphaBeta (1T)  : Depth " << res_ab.depth_reached 
+                  << " | Elapsed: " << std::fixed << std::setprecision(1) << el_ab << "ms"
+                  << " | Nodes: " << res_ab.nodes_visited 
+                  << " | Move: Col " << (res_ab.best_move + 1) << "\n"
+                  << "    LazySMP (" << smp_threads << "T)   : Depth " << res_smp.depth_reached 
+                  << " | Elapsed: " << std::fixed << std::setprecision(1) << el_smp << "ms"
+                  << " | Nodes: " << res_smp.nodes_visited 
+                  << " | Move: Col " << (res_smp.best_move + 1) << "\n" << std::endl;
+    }
+}
+
 void print_help(const char* prog) {
     std::cout << "Usage: " << prog << " [options]\n\n"
               << "Available options:\n"
@@ -372,6 +424,7 @@ void print_help(const char* prog) {
               << "  -p, --parallel    Run Lazy SMP parallel search duel against Alpha-Beta\n"
               << "  -t, --tournament  Run multi-engine round-robin tournament\n"
               << "  -x, --transposition Run Transposition Table pruning & cache demo (Phase 4)\n"
+              << "  -z, --blitz       Run real-time blitz time-budget benchmark (Phase 5)\n"
               << "  --help            Show this help message\n"
               << "\nWithout arguments, opens the interactive console menu." << std::endl;
 }
@@ -439,6 +492,10 @@ int main(int argc, char* argv[]) {
             run_transposition_demo();
             return 0;
         }
+        if (arg == "--blitz" || arg == "-z") {
+            run_blitz_demo();
+            return 0;
+        }
         if (arg == "--help") {
             print_help(argv[0]);
             return 0;
@@ -459,6 +516,7 @@ int main(int argc, char* argv[]) {
                   << "  [5] Parallel Lazy SMP Benchmark Duel\n"
                   << "  [6] Multi-Engine Round-Robin Tournament (Phase 3)\n"
                   << "  [7] Transposition Table Pruning & Cache Demo (Phase 4)\n"
+                  << "  [8] Real-Time Blitz & Time-Budget Search Demo (Phase 5)\n"
                   << "  [0] Exit\n"
                   << "Choice: ";
         
@@ -497,6 +555,8 @@ int main(int argc, char* argv[]) {
             run_full_tournament(4);
         } else if (choice == "7") {
             run_transposition_demo();
+        } else if (choice == "8") {
+            run_blitz_demo();
         } else if (choice == "0" || choice == "q" || choice == "Q") {
             std::cout << "Exiting program..." << std::endl;
             break;
