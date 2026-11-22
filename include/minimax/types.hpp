@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <exception>
 
 namespace mmb {
 
@@ -29,5 +30,17 @@ inline constexpr int COLS = 7;
 // Game-theoretic scoring thresholds
 inline constexpr Score MATE_THRESHOLD = 90'000;
 inline constexpr Score SCORE_WIN = 100'000;
+
+// Periodic node frequency for atomic stop flag polling (check every 2048 nodes)
+inline constexpr uint64_t NODE_CHECK_MASK = 2047ULL;
+
+/**
+ * @brief Exception thrown to unwind tree traversal upon atomic cooperative search cancellation.
+ */
+struct SearchAbortedException final : public std::exception {
+    [[nodiscard]] const char* what() const noexcept override {
+        return "SearchAbortedException: Game-tree search interrupted by atomic stop flag";
+    }
+};
 
 } // namespace mmb

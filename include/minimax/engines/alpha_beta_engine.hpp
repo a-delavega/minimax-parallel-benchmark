@@ -68,6 +68,10 @@ public:
         m_aspiration_stats.reset();
     }
 
+    void set_stop_flag(std::atomic<bool>* flag) noexcept override {
+        m_stop_flag = flag;
+    }
+
     /**
      * @brief Search with explicit alpha-beta bounds for a single depth level.
      * @param board Starting board position.
@@ -88,6 +92,10 @@ public:
         if (board.is_draw() || board.has_won(Player::Player1) || board.has_won(Player::Player2) || depth <= 0) {
             result.score = m_evaluator->evaluate(board, board.current_player, 0);
             return result;
+        }
+
+        if (m_stop_flag && m_stop_flag->load(std::memory_order_relaxed)) {
+            throw SearchAbortedException{};
         }
 
         const auto start_time = std::chrono::high_resolution_clock::now();
@@ -113,6 +121,10 @@ public:
         const int num_moves = MoveOrderer::get_ordered_moves(board, ordered_moves, root_tt_move);
 
         for (int i = 0; i < num_moves; ++i) {
+            if (m_stop_flag && m_stop_flag->load(std::memory_order_relaxed)) {
+                throw SearchAbortedException{};
+            }
+
             const Column col = ordered_moves[static_cast<std::size_t>(i)];
 
             Board next_board = board;
@@ -198,44 +210,61 @@ public:
         Score prev_score = 0;
 
         for (int d = 1; d <= max_depth; ++d) {
-            SearchResult iter_res;
-            if (m_use_aspiration && d >= m_aspiration_config.min_depth) {
-                iter_res = AspirationSearcher::search(
-                    d, 
-                    prev_score, 
-                    [this, &board](int depth, Score a, Score b) {
-                        return search_bounded(board, depth, a, b);
-                    },
-                    m_aspiration_config,
-                    &m_aspiration_stats
-                );
-            } else {
-                iter_res = search_bounded(
-                    board, 
-                    d, 
-                    std::numeric_limits<Score>::lowest() + 1, 
-                    std::numeric_limits<Score>::max() - 1
-                );
-            }
-
-            prev_score = iter_res.score;
-            total_nodes += iter_res.nodes_visited;
-            cumulative_result.best_move = iter_res.best_move;
-            cumulative_result.score = iter_res.score;
-            cumulative_result.depth_reached = d;
-            cumulative_result.iterations_completed = d;
-            cumulative_result.nodes_visited = total_nodes;
-
-            const auto now = std::chrono::high_resolution_clock::now();
-            cumulative_result.duration = std::chrono::duration_cast<std::chrono::microseconds>(now - start_total);
-
-            if (callback && !callback(cumulative_result)) {
-                break; // Caller aborted (e.g. time limit reached)
-            }
-
-            // Early termination if proven mate in 1 or forced mate was discovered
-            if (std::abs(iter_res.score) >= SCORE_WIN - 100) {
+            if (m_stop_flag && m_stop_flag->load(std::memory_order_relaxed)) {
                 break;
+            }
+
+            try {
+                SearchResult iter_res;
+                if (m_use_aspiration && d >= m_aspiration_config.min_depth) {
+                    iter_res = AspirationSearcher::search(
+                        d, 
+                        prev_score, 
+                        [this, &board](int depth, Score a, Score b) {
+                            return search_bounded(board, depth, a, b);
+                        },
+                        m_aspiration_config,
+                        &m_aspiration_stats
+                    );
+                } else {
+                    iter_res = search_bounded(
+                        board, 
+                        d, 
+                        std::numeric_limits<Score>::lowest() + 1, 
+                        std::numeric_limits<Score>::max() - 1
+                    );
+                }
+
+                prev_score = iter_res.score;
+                total_nodes += iter_res.nodes_visited;
+                cumulative_result.best_move = iter_res.best_move;
+                cumulative_result.score = iter_res.score;
+                cumulative_result.depth_reached = d;
+                cumulative_result.iterations_completed = d;
+                cumulative_result.nodes_visited = total_nodes;
+
+                const auto now = std::chrono::high_resolution_clock::now();
+                cumulative_result.duration = std::chrono::duration_cast<std::chrono::microseconds>(now - start_total);
+
+                if (callback && !callback(cumulative_result)) {
+                    break; // Caller aborted (e.g. time limit reached)
+                }
+
+                // Early termination if proven mate in 1 or forced mate was discovered
+                if (std::abs(iter_res.score) >= SCORE_WIN - 100) {
+                    break;
+                }
+            } catch (const SearchAbortedException&) {
+                // Aborted mid-iteration; retain cumulative_result from completed iterations
+                break;
+            }
+        }
+
+        if (cumulative_result.best_move == -1) {
+            std::array<Column, COLS> fallback_moves{};
+            const int count = MoveOrderer::get_ordered_moves(board, fallback_moves);
+            if (count > 0) {
+                cumulative_result.best_move = fallback_moves[0];
             }
         }
 
@@ -258,7 +287,13 @@ private:
         bool is_maximizing, 
         Player pov, 
         uint64_t& nodes_count
-    ) const noexcept {
+    ) const {
+        if (m_stop_flag && (nodes_count & NODE_CHECK_MASK) == 0) {
+            if (m_stop_flag->load(std::memory_order_relaxed)) {
+                throw SearchAbortedException{};
+            }
+        }
+
         const Player current = board.current_player;
         const Player previous = opponent(current);
 
@@ -396,6 +431,7 @@ private:
     bool m_use_aspiration = true;
     AspirationConfig m_aspiration_config{};
     AspirationStats m_aspiration_stats{};
+    std::atomic<bool>* m_stop_flag = nullptr;
 };
 
 } // namespace mmb

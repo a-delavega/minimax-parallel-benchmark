@@ -37,6 +37,13 @@ public:
      * @param callback Optional callback invoked after each depth iteration finishes.
      * @return SearchResult containing best move and accumulated execution telemetry.
      */
+    /**
+     * @brief Sets or clears an external atomic stop flag for cooperative search cancellation.
+     */
+    virtual void set_stop_flag(std::atomic<bool>* flag) noexcept {
+        (void)flag;
+    }
+
     [[nodiscard]] virtual SearchResult search_iterative(
         const Board& board,
         int max_depth,
@@ -44,11 +51,15 @@ public:
     ) {
         SearchResult final_res;
         for (int d = 1; d <= max_depth; ++d) {
-            SearchResult cur = search(board, d);
-            final_res = cur;
-            final_res.depth_reached = d;
-            final_res.iterations_completed = d;
-            if (callback && !callback(cur)) {
+            try {
+                SearchResult cur = search(board, d);
+                final_res = cur;
+                final_res.depth_reached = d;
+                final_res.iterations_completed = d;
+                if (callback && !callback(cur)) {
+                    break;
+                }
+            } catch (const SearchAbortedException&) {
                 break;
             }
         }
@@ -67,6 +78,12 @@ public:
         TimeManager& time_mgr,
         int max_depth = 42
     ) {
+        set_stop_flag(&time_mgr.stop_flag());
+        struct StopGuard {
+            IEngine* engine;
+            ~StopGuard() { engine->set_stop_flag(nullptr); }
+        } guard{this};
+
         time_mgr.start_turn(board);
         auto last_iter_start = std::chrono::high_resolution_clock::now();
         std::chrono::microseconds last_iter_duration{0};

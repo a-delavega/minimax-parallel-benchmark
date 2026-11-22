@@ -4,8 +4,12 @@
 #include "minimax/move_orderer.hpp"
 #include "minimax/types.hpp"
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
+#include <mutex>
+#include <thread>
 
 namespace mmb {
 
@@ -54,6 +58,23 @@ public:
         : settings_(settings),
           game_clock_(settings.game_clock_remaining) {}
 
+    TimeManager(const TimeManager& other)
+        : settings_(other.settings_),
+          game_clock_(other.game_clock_) {}
+
+    TimeManager& operator=(const TimeManager& other) {
+        if (this != &other) {
+            stop_async_timer();
+            settings_ = other.settings_;
+            game_clock_ = other.game_clock_;
+        }
+        return *this;
+    }
+
+    ~TimeManager() {
+        stop_async_timer();
+    }
+
     void set_settings(const TimeSettings& settings) noexcept {
         settings_ = settings;
         game_clock_ = settings.game_clock_remaining;
@@ -69,6 +90,43 @@ public:
 
     void set_game_clock(std::chrono::milliseconds clock) noexcept {
         game_clock_ = clock;
+    }
+
+    [[nodiscard]] std::atomic<bool>& stop_flag() noexcept {
+        return stop_flag_;
+    }
+
+    [[nodiscard]] const std::atomic<bool>& stop_flag() const noexcept {
+        return stop_flag_;
+    }
+
+    void trigger_stop() noexcept {
+        stop_flag_.store(true, std::memory_order_relaxed);
+    }
+
+    void start_async_timer(std::chrono::milliseconds timeout) noexcept {
+        stop_async_timer();
+        stop_flag_.store(false, std::memory_order_relaxed);
+        if (timeout <= std::chrono::milliseconds{0}) {
+            stop_flag_.store(true, std::memory_order_relaxed);
+            return;
+        }
+
+        timer_thread_ = std::jthread([this, timeout](std::stop_token st) {
+            std::mutex mtx;
+            std::unique_lock<std::mutex> lock(mtx);
+            std::condition_variable_any cv;
+            if (!cv.wait_for(lock, st, timeout, [&] { return st.stop_requested(); })) {
+                stop_flag_.store(true, std::memory_order_relaxed);
+            }
+        });
+    }
+
+    void stop_async_timer() noexcept {
+        if (timer_thread_.joinable()) {
+            timer_thread_.request_stop();
+            timer_thread_.join();
+        }
     }
 
     /**
@@ -163,6 +221,7 @@ public:
     void start_turn(const Board& board) noexcept {
         current_budget_ = compute_budget(board);
         start_time_ = std::chrono::high_resolution_clock::now();
+        start_async_timer(current_budget_.hard_deadline);
     }
 
     [[nodiscard]] const TimeBudget& current_budget() const noexcept {
@@ -190,7 +249,8 @@ public:
      * @brief Checks if hard deadline has been reached.
      */
     [[nodiscard]] bool is_time_up() const noexcept {
-        return elapsed() >= std::chrono::duration_cast<std::chrono::microseconds>(current_budget_.hard_deadline);
+        return stop_flag_.load(std::memory_order_relaxed) || 
+               (elapsed() >= std::chrono::duration_cast<std::chrono::microseconds>(current_budget_.hard_deadline));
     }
 
     /**
@@ -203,6 +263,10 @@ public:
         int current_depth, 
         std::chrono::microseconds last_depth_duration
     ) const noexcept {
+        if (stop_flag_.load(std::memory_order_relaxed)) {
+            return false;
+        }
+
         if (current_depth <= 1) {
             return true; // Always explore at least depth 2
         }
@@ -228,6 +292,7 @@ public:
      * @brief Updates match clock upon turn completion by deducting turn elapsed time and adding increment.
      */
     void complete_turn(std::chrono::microseconds turn_duration) noexcept {
+        stop_async_timer();
         const auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(turn_duration);
         if (game_clock_ > duration_ms) {
             game_clock_ -= duration_ms;
@@ -242,6 +307,8 @@ private:
     std::chrono::milliseconds game_clock_{30'000};
     TimeBudget current_budget_{};
     std::chrono::high_resolution_clock::time_point start_time_{};
+    std::atomic<bool> stop_flag_{false};
+    std::jthread timer_thread_{};
 };
 
 } // namespace mmb
