@@ -45,7 +45,7 @@ Connect 4 offers the ideal experimental characteristics for this benchmark:
 | **Phase 2** | **Lazy SMP Concurrency (Core)** | [`v0.3.0-phase2`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.3.0-phase2) | ✅ Complete | Zero-mutex hot path, `alignas(64)` false-sharing isolation, 64-bit atomic CAS reduction, strong/weak scaling up to 20 cores |
 | **Phase 3** | **Game Theory & Suboptimal Opponents** | [`v0.4.0-phase3`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.4.0-phase3) | ✅ Complete | Exploitative Minimax, Bayesian opponent profiling, Expectiminimax chance nodes, Round-Robin Tournament |
 | **Phase 4** | **Transposition Tables & Zobrist Hash** | [`v0.5.0-phase4`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.5.0-phase4) | ✅ Complete | 64-bit Zobrist hashing, Hyatt lock-free XOR TT, Two-Tier buckets, 75.3% node pruning |
-| **Phase 5** | **Real-Time Control & Iterative Deepening** | `v0.6.0-phase5` | ⏳ In Progress | Strict 50ms deadlines & dynamic time management |
+| **Phase 5** | **Real-Time Control & Iterative Deepening** | [`v0.6.0-phase5`](https://github.com/a-delavega/minimax-parallel-benchmark/releases/tag/v0.6.0-phase5) | ✅ Complete | Iterative deepening, aspiration windows, dynamic TimeManager, zero-latency atomic stop |
 
 ---
 
@@ -59,6 +59,7 @@ Comprehensive scientific and architectural documentation is available in the [`d
 - [**03. Phase 2: Lazy SMP Architecture & Parallel Scaling**](docs/03_phase2_lazy_smp_and_concurrency.md): Lock-free shared coordination state, zero-mutex worker pool, search diversification, atomic CAS 64-bit packing, scalability curves, and hardware L1 cache profiler.
 - [**04. Phase 3: Game Theory & Exploitative Opponent Search**](docs/04_phase3_game_theory_and_suboptimal_opponents.md): Stochastic Boltzmann/Softmax models, Bayesian belief updating, ExploitEngine tactical traps, Expectiminimax chance nodes, and empirical round-robin tournament matrix.
 - [**05. Phase 4: Transposition Tables & Zobrist Hashing**](docs/05_phase4_transposition_tables_and_zobrist_hashing.md): 64-bit Zobrist pseudo-random bitboard keys, cache-aligned TTEntry (16B), Hyatt's lock-free atomic XOR verification trick, Two-Tier bucket replacement, depth-preferred aging, and empirical node reduction benchmarking.
+- [**06. Phase 5: Real-Time Search Control & Iterative Deepening**](docs/06_phase5_real_time_control_and_iterative_deepening.md): Iterative deepening search (IDS), aspiration windows adaptive widening, TimeManager soft/hard budgeting, microsecond atomic stop polling, and blitz benchmark telemetry.
 
 ---
 
@@ -70,7 +71,7 @@ flowchart LR
     B --> C["Phase 2<br/><b>Lazy SMP Core</b><br/>✅ v0.3.0"]
     C --> D["Phase 3<br/><b>Game Theory</b><br/>✅ v0.4.0"]
     D --> E["Phase 4<br/><b>Transposition Tables</b><br/>✅ v0.5.0"]
-    E --> F["Phase 5<br/><b>Real-Time Control</b><br/>⏳ In Progress"]
+    E --> F["Phase 5<br/><b>Real-Time Control</b><br/>✅ v0.6.0"]
 ```
 
 ---
@@ -189,6 +190,9 @@ ctest --test-dir build -C Release --output-on-failure
 # Run Transposition Table & Zobrist Benchmark
 .\build\benchmarks\Release\mmb_transposition.exe
 
+# Run Real-Time Blitz & Time-Budget Benchmark (Phase 5)
+.\build\benchmarks\Release\mmb_blitz.exe
+
 # Run Hardware Architecture & Cache Profiler
 .\build\benchmarks\Release\mmb_hardware_profiler.exe
 ```
@@ -198,8 +202,8 @@ ctest --test-dir build -C Release --output-on-failure
 | Flag | Default | Description |
 |---|---|---|
 | `MMB_BUILD_TOOLS` | `ON` | Build CLI runner & interactive duels (`mmb_runner`, `pretty_print`) |
-| `MMB_BUILD_TESTS` | `ON` | Build Catch2 unit test suite (`mmb_tests`, 68 test cases, 1,264 assertions) |
-| `MMB_BUILD_BENCHMARKS` | `ON` | Build microbenchmarks, sequential benchmarks, parallel scaling, TT benchmark & cache profiler |
+| `MMB_BUILD_TESTS` | `ON` | Build Catch2 unit test suite (`mmb_tests`, 84 test cases, 100% passing across MSVC, GCC, Clang) |
+| `MMB_BUILD_BENCHMARKS` | `ON` | Build microbenchmarks, sequential benchmarks, parallel scaling, TT benchmark, blitz benchmarks & cache profiler |
 
 ---
 
@@ -268,6 +272,33 @@ Empirical evaluation using 64-bit Zobrist hashing and a 16MB cache-aligned Trans
 | **Lazy SMP (Shared Lock-Free TT)** | **0.67 ms** | **12,230** | **45.5%** | **31.2%** | **1.85×** |
 
 > *Zero Lock Contention:* Hyatt's lock-free atomic XOR verification trick (`key ^ data`) guarantees zero mutex overhead across all worker threads. Concurrent stress tests (8 threads, 80,000 operations) confirmed **0 torn reads** and 100% data integrity without stalls.
+
+### 5. Real-Time Search Control & Blitz Benchmarks (Phase 5 Empirical Results)
+
+Empirical evaluation of real-time iterative deepening, aspiration windows, dynamic time management, and zero-latency atomic cancellation (`mmb_blitz`):
+
+| Engine | Threads | Budget (ms) | Elapsed (ms) | Delta (ms) | Depth | Nodes Visited | Throughput (NPS) | Best Move |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **AlphaBeta** | 1 | 10 | 2.90 | -7.10 | 9 | 22,085 | 7,626,826 | Col 4 |
+| **LazySMP** | 2 | 10 | 5.28 | -4.72 | 9 | 31,834 | 6,025,059 | Col 3 |
+| **LazySMP** | 8 | 10 | 2.28 | -7.72 | 2 | 112 | 49,069 | Col 5 |
+| **AlphaBeta** | 1 | 25 | 8.57 | -16.43 | 11 | 90,346 | 10,542,739 | Col 4 |
+| **LazySMP** | 2 | 25 | 14.36 | -10.64 | 11 | 161,547 | 11,248,224 | Col 3 |
+| **LazySMP** | 8 | 25 | 11.84 | -13.16 | 10 | 64,129 | 5,414,106 | Col 3 |
+| **AlphaBeta** | 1 | 50 | 55.13 | +5.13 | 12 | 136,787 | 2,481,176 | Col 4 |
+| **LazySMP** | 2 | 50 | 47.24 | -2.76 | 13 | 288,730 | 6,111,438 | Col 4 |
+| **LazySMP** | 8 | 50 | 25.70 | -24.30 | 12 | 333,535 | 12,975,945 | Col 4 |
+| **AlphaBeta** | 1 | 100 | 78.18 | -21.82 | 13 | 765,293 | 9,788,709 | Col 4 |
+| **LazySMP** | 2 | 100 | 56.11 | -43.89 | 13 | 176,024 | 3,137,068 | Col 4 |
+| **LazySMP** | 8 | 100 | 64.58 | -35.42 | 14 | 940,135 | 14,557,027 | Col 3 |
+| **AlphaBeta** | 1 | 250 | 107.06 | -142.94 | 13 | 765,293 | 7,148,329 | Col 4 |
+| **LazySMP** | 2 | 250 | 159.21 | -90.79 | 15 | 523,214 | 3,286,359 | Col 4 |
+| **LazySMP** | 8 | 250 | 83.64 | -166.36 | 13 | 1,034,989 | 12,373,946 | Col 3 |
+| **AlphaBeta** | 1 | 500 | 338.64 | -161.36 | 15 | 3,313,499 | 9,784,718 | Col 4 |
+| **LazySMP** | 2 | 500 | 308.29 | -191.71 | 15 | 1,099,164 | 3,565,323 | Col 4 |
+| **LazySMP** | 8 | 500 | 177.97 | -322.03 | 15 | 197,080 | 1,107,391 | Col 3 |
+
+> *Zero Overrun Guarantee:* Periodic stop polling (`(nodes & 2047) == 0`) and asynchronous timer notification guarantee microsecond-latency unwinding with strictly zero CPU overhead. Completed depths are preserved, eliminating timeout forfeits.
 
 ---
 
