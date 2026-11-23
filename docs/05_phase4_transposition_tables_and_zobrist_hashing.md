@@ -29,17 +29,28 @@ Because column gravity stacks pieces independently, both sequences lead to ident
 ### 2.1 Uniform Pseudo-Random Bitboard Keys
 Albert Zobrist (1970) proved that assigning independent, uniformly distributed random bitstrings to state elements and combining them with bitwise XOR ($\oplus$) forms an algebraic group that preserves state uniqueness with negligible collision probability ($P_{\text{collision}} \approx 2^{-64} \approx 5.42 \times 10^{-20}$).
 
-Let $\mathcal{P} \in \{0, 1\}$ denote the player, $c \in \{0, \dots, 6\}$ the column, and $r \in \{0, \dots, 5\}$ the row:
-$$Z[p][c][r] \sim \mathbb{U}(0, 2^{64}-1) \quad (84 \text{ piece keys})$$
-$$Z_{\text{turn}} \sim \mathbb{U}(0, 2^{64}-1) \quad (1 \text{ active player turn key})$$
+Let $p \in \{0, 1\}$ denote the player, $c \in \{0, \dots, 6\}$ the column, and $r \in \{0, \dots, 5\}$ the row:
+
+$$
+Z[p][c][r] \sim \mathbb{U}(0, 2^{64}-1) \quad (84 \text{ piece keys})
+$$
+
+$$
+Z_{\text{turn}} \sim \mathbb{U}(0, 2^{64}-1) \quad (1 \text{ active player turn key})
+$$
 
 We generate these deterministically via `std::mt19937_64` using seed `0x9876543210FEDCBAULL`, guaranteeing identical hash values across MSVC, GCC, Clang, and diverse CPU microarchitectures.
 
 ### 2.2 $O(1)$ Incremental State Maintenance
 Recalculating hash values from scratch across 42 cells costs $O(42)$ operations per node. Because XOR is commutative, associative, and its own inverse ($A \oplus B \oplus B = A$), the hash is updated in **1 CPU clock cycle** directly inside `Board::make_move` and `Board::unmake_move`:
 
-$$\text{row} = \text{height}[\text{col}] - \text{col} \times 7$$
-$$H_{t+1} = H_t \oplus Z[\text{player}][\text{col}][\text{row}] \oplus Z_{\text{turn}}$$
+$$
+\text{row} = \text{height}[\text{col}] - \text{col} \times 7
+$$
+
+$$
+H_{t+1} = H_t \oplus Z[p][c][r] \oplus Z_{\text{turn}}
+$$
 
 ```mermaid
 flowchart LR
@@ -91,8 +102,11 @@ We pack all evaluation metadata into a single 64-bit atomic integer `data`:
 [63..56] age (8b) | [55..48] flag (8b) | [47..40] depth (8b) | [39..32] move (8b) | [31..0] score (32b)
 ```
 
-The storage slot stores the key masked with data:
-$$\text{key\_xor\_data} = \text{key} \oplus \text{data}$$
+The storage slot stores the key masked with data (`key_xor_data`):
+
+$$
+K_{\text{enc}} = K \oplus D
+$$
 
 ```cpp
 struct alignas(16) TTAtomicSlot {
@@ -102,7 +116,7 @@ struct alignas(16) TTAtomicSlot {
 ```
 
 1. **Store:**
-   - Compute $D = \text{encode\_data}(\text{score}, \text{move}, \text{depth}, \text{flag}, \text{age})$.
+   - Compute packed 64-bit word $D = \operatorname{pack}(\text{score}, \text{move}, \text{depth}, \text{flag}, \text{age})$.
    - Compute $K_{\text{enc}} = K \oplus D$.
    - Store $K_{\text{enc}}$ and $D$ via relaxed atomic stores (`std::memory_order_relaxed`).
 2. **Probe:**
