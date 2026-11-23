@@ -2,14 +2,17 @@
 
 **Document Code**: `DOC-04-PHASE3`  
 **Author**: Alejandro de la Vega Zuluaga (`a-delavega`)  
-**Status**: In Progress (Subphases 3.1, 3.2, 3.3)  
+**Status**: Complete (`v0.4.0-phase3`)  
 
 ---
 
 ## 1. Abstract & Mathematical Motivation
 
 Classical zero-sum game tree search algorithms (**Minimax** and **Alpha-Beta**) are founded on the strict assumption of **bilateral perfection**:
-$$\forall n \in \text{Opponent Nodes}, \quad V(n) = \min_{m \in \text{Moves}(n)} V(m)$$
+
+$$
+\forall n \in \text{Opponent Nodes}, \quad V(n) = \min_{m \in \text{Moves}(n)} V(m)
+$$
 
 Under the von Neumann Minimax Theorem and Nash Equilibrium, this strategy is **unexploitable** and guarantees the game-theoretic value $V^*$ of the game. If Connect 4 is played from the root by two perfect rational players, Player 1 (first player) possesses a forced theoretical win with perfect play.
 
@@ -27,11 +30,18 @@ When facing a flawed adversary, **pure Minimax is overly conservative (passive)*
   - If the opponent plays *any of the other 6 legal moves* $\{m_2, \dots, m_7\}$, they blunder immediately into a forced 4-in-a-row loss ($V = +100\,000$).
 
 Under standard Minimax:
-$$V(B) = \min(-10, +100\,000, \dots) = -10 < V(A) = 0$$
+
+$$
+V(B) = \min(-10, +100\,000, \dots) = -10 < V(A) = 0
+$$
+
 Minimax unconditionally selects **Branch A**, discarding the trap because in the worst-case scenario the opponent plays like a supercomputer.
 
 However, if the opponent blunders with probability $P(\text{error}) = 80\%$:
-$$\mathbb{E}[V(B)] = (0.20 \times -10) + (0.80 \times 100\,000) = +79\,998 \gg 0$$
+
+$$
+\mathbb{E}[V(B)] = (0.20 \times -10) + (0.80 \times 100\,000) = +79\,998 \gg 0
+$$
 
 **Opponent-Exploitative Minimax** bridges this gap by maintaining strict minimax safety guards while actively steering play toward high-entropy positions where the opponent's probability of failure is maximized.
 
@@ -44,47 +54,71 @@ We model the opponent's move selection via parameterized probability distributio
 ### 2.1. Boltzmann / Softmax Rationality Model
 
 Given legal moves $m \in M(n)$ and evaluated scores $S(m)$:
-$$P(m) = \frac{\exp\left(\frac{S(m) - \max_k S(k)}{T}\right)}{\sum_{j \in M(n)} \exp\left(\frac{S(j) - \max_k S(k)}{T}\right)}$$
+
+$$
+P(m) = \frac{\exp\left(\frac{S(m) - \max_k S(k)}{T}\right)}{\sum_{j \in M(n)} \exp\left(\frac{S(j) - \max_k S(k)}{T}\right)}
+$$
+
 * High Temperature ($T \to \infty$): Decouples into uniform exploration (Random agent).
 * Low Temperature ($T \to 0$): Collapses into standard $\arg\max$ selection (Optimal Minimax).
 
 ### 2.2. $\epsilon$-Greedy Error Distribution
 
 With probability $1 - \epsilon$, the opponent selects the optimal defense:
-$$P(m^*) = 1 - \epsilon, \quad m^* = \arg\max_{m} S(m)$$
+
+$$
+P(m^*) = 1 - \epsilon, \quad m^* = \arg\max_{m} S(m)
+$$
+
 With probability $\epsilon$, the opponent distributes moves across suboptimal alternatives:
-$$\forall m \neq m^*, \quad P(m) = \frac{\epsilon}{|M(n)| - 1}$$
+
+$$
+\forall m \neq m^*, \quad P(m) = \frac{\epsilon}{|M(n)| - 1}
+$$
 
 ---
 
 ## 3. The Exploitative Utility Formulation
 
-The exploitative node evaluation $V_{\text{exploit}}(n)$ balances minimax robustness with probabilistic payoff:
-$$V_{\text{exploit}}(n) = (1 - \lambda) V_{\text{minimax}}(n) + \lambda \mathbb{E}_{m \sim P_{\text{opp}}}[V(m)] + \Delta_{\text{trap}}(n)$$
+The exploitative node evaluation $V_{\mathrm{exploit}}(n)$ balances minimax robustness with probabilistic payoff:
+
+$$
+V_{\mathrm{exploit}}(n) = (1 - \lambda) V_{\mathrm{minimax}}(n) + \lambda \mathbb{E}_{m \sim P_{\mathrm{opp}}}[V(m)] + \Delta_{\mathrm{trap}}(n)
+$$
+
 Where:
 * $\lambda \in [0.0, 1.0]$: Exploitation weight ($\lambda = 0$ recovers pure Alpha-Beta).
-* $\Delta_{\text{trap}}(n)$: Tactical trap bonus proportional to the **Induced Error Factor** ($k$ losing alternatives vs 1 saving path).
+* $\Delta_{\mathrm{trap}}(n)$: Tactical trap bonus proportional to the **Induced Error Factor** ($k$ losing alternatives vs 1 saving path).
 
 ### Zero-Regret Minimax Safety Invariant
 
 To guarantee that exploitative optimism never commits suicide:
-1. If $V_{\text{minimax}}(n) \le -\text{MATE\_THRESHOLD}$, the engine refuses the move regardless of trap payoff.
-2. If a provable forced mate exists ($V(n) \ge \text{MATE\_THRESHOLD}$), the forced win is executed immediately.
+1. If $V_{\mathrm{minimax}}(n) \le -T_{\mathrm{mate}}$ (where $T_{\mathrm{mate}} = \text{90\,000}$, the `MATE_THRESHOLD` constant), the engine refuses the move regardless of trap payoff.
+2. If a provable forced mate exists ($V(n) \ge T_{\mathrm{mate}}$), the forced win is executed immediately.
 
 ---
 
 ## 4. Bayesian Belief Updating Over Adversarial Hypotheses
 
 Rather than assuming fixed opponent parameters, the `BayesianOpponentModel` maintains a discrete probability distribution over behavioral hypotheses:
-$$\Theta = \{\text{OptimalMinimax}, \text{Greedy}, \text{ShallowHeuristic}, \text{HumanNovice}, \text{Random}\}$$
 
-Starting from a uniform prior $P(\theta_k) = 1 / |\Theta|$, each observed move $m_{\text{obs}}$ triggers a Bayesian belief update:
-$$P(\theta_k \mid m_{\text{obs}}, B) = \frac{P(m_{\text{obs}} \mid \theta_k, B) P(\theta_k)}{\sum_j P(m_{\text{obs}} \mid \theta_j, B) P(\theta_j)}$$
+$$
+\Theta = \{\text{OptimalMinimax}, \text{Greedy}, \text{ShallowHeuristic}, \text{HumanNovice}, \text{Random}\}
+$$
+
+Starting from a uniform prior $P(\theta_k) = 1 / |\Theta|$, each observed move $m_{\mathrm{obs}}$ triggers a Bayesian belief update:
+
+$$
+P(\theta_k \mid m_{\mathrm{obs}}, B) = \frac{P(m_{\mathrm{obs}} \mid \theta_k, B) P(\theta_k)}{\sum_j P(m_{\mathrm{obs}} \mid \theta_j, B) P(\theta_j)}
+$$
 
 ### Predictive Marginalization
 
 Future opponent actions are forecasted by marginalizing across the hypothesis space:
-$$P(m \mid B) = \sum_{k} P(m \mid \theta_k, B) P(\theta_k)$$
+
+$$
+P(m \mid B) = \sum_{k} P(m \mid \theta_k, B) P(\theta_k)
+$$
 
 This marginal probability directly feeds the chance nodes of the `ExpectiminimaxEngine`.
 
@@ -94,9 +128,16 @@ This marginal probability directly feeds the chance nodes of the `Expectiminimax
 
 The `ExpectiminimaxEngine` evaluates game trees containing two distinct node types:
 1. **Decision Nodes (Our Turn)**: Maximize deterministic payoff:
-   $$V(n) = \max_{m \in M(n)} V(m)$$
+
+$$
+V(n) = \max_{m \in M(n)} V(m)
+$$
+
 2. **Chance Nodes (Opponent Turn)**: Compute the expected utility over the opponent's predictive distribution:
-   $$V(n) = \sum_{m \in M(n)} P(m \mid B) V(m)$$
+
+$$
+V(n) = \sum_{m \in M(n)} P(m \mid B) V(m)
+$$
 
 ---
 
