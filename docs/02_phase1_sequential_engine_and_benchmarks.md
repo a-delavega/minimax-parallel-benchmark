@@ -9,7 +9,7 @@
 ## 1. Executive Summary & Research Motivation
 
 Phase 1 constructs the single-threaded sequential search infrastructure and resolves a classic dilemma in artificial intelligence for two-player zero-sum games:
-- **Raw Search Depth (`SimpleEvaluator`)**: An ultra-fast $\mathcal{O}(1)$ terminal-only evaluation function designed to maximize clock cycles spent purely on traversing the tree, achieving deep search horizons at **35M – 75M Nodes Per Second (NPS)**.
+- **Raw Search Depth (`SimpleEvaluator`)**: An ultra-fast $O(1)$ terminal-only evaluation function designed to maximize clock cycles spent purely on traversing the tree, achieving deep search horizons at **35M – 75M Nodes Per Second (NPS)**.
 - **Complex Positional Evaluation (`ComplexEvaluator`)**: A knowledge-dense evaluation function that expends more CPU cycles per leaf examining column centrality, geometric 3-in-a-row threats, and parity structures, operating at **8M – 17M NPS**.
 
 ```mermaid
@@ -47,8 +47,8 @@ Zero-overhead polymorphic interfaces defined in `include/minimax/`:
 
 ### 2.2 Subphase 1.2 & Optimization: Static & Tactical Move Ordering (`MoveOrderer`)
 The efficiency of Alpha-Beta pruning depends critically on the move ordering:
-- In the worst case, Alpha-Beta explores $\mathcal{O}(b^d)$ nodes.
-- In the optimal case (evaluating the best refutation first), the complexity collapses to $\mathcal{O}(b^{d/2})$.
+- In the worst case, Alpha-Beta explores $O(b^d)$ nodes.
+- In the optimal case (evaluating the best refutation first), the complexity collapses to $O(b^{d/2})$.
 
 #### Center-Outward Heuristic
 In Connect 4, column 3 (center) participates in up to **16 distinct 4-in-a-row winning lines**, while outer columns 0 and 6 only participate in **7**. By default, legal candidate columns are evaluated in the order:
@@ -56,14 +56,14 @@ In Connect 4, column 3 (center) participates in up to **16 distinct 4-in-a-row w
 ORDERED_COLUMNS = [3, 2, 4, 1, 5, 0, 6]
 ```
 
-#### Tactical Move Prioritization in $\mathcal{O}(1)$
+#### Tactical Move Prioritization in $O(1)$
 `MoveOrderer` was extended with instantaneous threat scanning:
 1. **Priority 1 (Immediate Wins):** If dropping a disc in column $c$ wins the game on this turn (`Board::is_winning_move`), it is placed at index 0. This immediately triggers a $\beta$-cutoff on the very first evaluated branch.
 2. **Priority 2 (Urgent Defensive Blocks):** If the opponent threatens an immediate win on their next turn (`Board::is_winning_move_for(opp, c)`), the blocking move is prioritized to prune all losing lines immediately.
 3. **Priority 3 (Center-Outward):** Remaining non-urgent moves follow the static center-outward sequence.
 
 ### 2.3 Subphase 1.3: Raw Depth Leaf Evaluator (`SimpleEvaluator`)
-A minimal-cost $\mathcal{O}(1)$ evaluator checking terminal conditions with distance-to-mate discounting:
+A minimal-cost $O(1)$ evaluator checking terminal conditions with distance-to-mate discounting:
 - **Victory:** $+100,000 - \text{depth}$ (incentivizes quickest win).
 - **Defeat:** $-100,000 + \text{depth}$ (incentivizes longest resistance).
 - **Draw / Non-terminal:** $0$.
@@ -75,7 +75,7 @@ An exhaustive recursive Minimax search without pruning, serving as the **mathema
 Maintains dynamic $[\alpha, \beta]$ search windows with early cutoffs:
 - **Beta-Cutoff:** When a branch achieves $\text{score} \ge \beta$, the remaining child nodes are pruned immediately.
 - **Alpha-Cutoff:** When a branch achieves $\text{score} \le \alpha$, the branch is discarded.
-- **Board Reversibility:** Utilizes `Board::make_move(col)` and `Board::unmake_move(col)` in $\mathcal{O}(1)$, eliminating stack-frame copy churn.
+- **Board Reversibility:** Utilizes `Board::make_move(col)` and `Board::unmake_move(col)` in $O(1)$, eliminating stack-frame copy churn.
 
 ### 2.6 Subphase 1.6: Heuristic Pattern Evaluator (`ComplexEvaluator`)
 Computes deep positional scores for non-terminal game states using hardware vector instructions:
@@ -181,7 +181,7 @@ In a full 36-move game between `ComplexEvaluator (d=6)` and `SimpleEvaluator (d=
 
 With Phase 1 100% complete, verified, and benchmarked, all prerequisites for parallel search are established:
 1. **Thread-Safe State:** 32-byte `Board` struct with zero heap allocations, safe for direct by-value stack and register copying across threads.
-2. **Reversible Moves:** `make_move` and `unmake_move` in $\mathcal{O}(1)$.
+2. **Reversible Moves:** `make_move` and `unmake_move` in $O(1)$.
 3. **Verified Baselines:** Ground-truth search outputs established for verifying multi-threaded tree searches.
 
 Next Step: **Phase 2 – Lazy SMP (Symmetric Multiprocessing)** using `std::jthread` / `std::thread` to explore the search tree concurrently without mutex contention on the hot path.
