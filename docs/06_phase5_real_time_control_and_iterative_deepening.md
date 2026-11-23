@@ -83,7 +83,7 @@ Because of TT hits from the failed search, re-searches cost only a fraction of a
 
 `TimeManager` operates under two configurable paradigms:
 1. **FixedPerMove:** Allots a constant wall-clock budget (e.g. 50ms) per move, deducting a safety margin $\delta_{\text{margin}} = 2\text{ms}$ for OS scheduling jitter.
-2. **DynamicGameClock:** Allocates a variable slice based on remaining match time, estimated moves to completion ($40 - \text{moves\_played}$), and Fischer increment.
+2. **DynamicGameClock:** Allocates a variable slice based on remaining match time, estimated moves to completion ($40 - \text{moves played}$), and Fischer increment.
 
 ### 4.1 Tactical Complexity Heuristics
 
@@ -96,9 +96,11 @@ Positions are not evaluated with equal clock expenditure. `TimeManager::evaluate
 
 Before launching depth $d+1$, `should_start_next_depth` evaluates:
 
-$$t_{\text{projected}} = t_{\text{elapsed}} + (t_{d} \cdot \text{EBF})$$
+$$
+t_{\mathrm{projected}} = t_{\mathrm{elapsed}} + (t_{d} \cdot \text{EBF})
+$$
 
-If $t_{\text{projected}} > t_{\text{hard\_deadline}}$ or $t_{\text{elapsed}} \ge t_{\text{soft\_deadline}}$, the engine terminates the search and returns the validated result from depth $d$.
+If $t_{\mathrm{projected}} > t_{\mathrm{hard}}$ or $t_{\mathrm{elapsed}} \ge t_{\mathrm{soft}}$, the engine terminates the search and returns the validated result from depth $d$.
 
 ---
 
