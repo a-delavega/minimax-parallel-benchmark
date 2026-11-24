@@ -55,10 +55,8 @@ Total: 49 bits used out of 64 available in uint64_t.
 ### The Mathematical Proof of Sentinel Bits
 
 The most critical challenge in bitboard representations of grid games is detecting diagonal alignments without false-positive column-wrapping collisions:
-- **Ascending Diagonal (`/`):** A step to `(col + 1, row + 1)` corresponds to a bit shift of:
-  $$((\text{col} + 1) \times 7 + (\text{row} + 1)) - (\text{col} \times 7 + \text{row}) = 7 + 1 = +8$$
-- **Descending Diagonal (`\`):** A step to `(col + 1, row - 1)` corresponds to a bit shift of:
-  $$((\text{col} + 1) \times 7 + (\text{row} - 1)) - (\text{col} \times 7 + \text{row}) = 7 - 1 = +6$$
+- **Ascending Diagonal (`/`):** A step to `(col + 1, row + 1)` corresponds to a bit shift of: $((\text{col} + 1) \times 7 + (\text{row} + 1)) - (\text{col} \times 7 + \text{row}) = 7 + 1 = +8$.
+- **Descending Diagonal (`\`):** A step to `(col + 1, row - 1)` corresponds to a bit shift of: $((\text{col} + 1) \times 7 + (\text{row} - 1)) - (\text{col} \times 7 + \text{row}) = 7 - 1 = +6$.
 
 #### The Column-Wrapping Problem Without Sentinels
 In a 6-row packed layout (6 bits per column), a shift of $+6$ from the top cell of Column $C$ (row 5) arithmetic overflows directly into row 0 of Column $C+1$. Consequently, pieces physically on opposite sides of the board would align arithmetically, falsely registering a 4-in-a-row victory.
