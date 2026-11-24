@@ -113,7 +113,7 @@ A standalone benchmarking executable testing three standard benchmark positions:
 ### 3.1 Benchmark Data Summary
 
 #### Test Suite 1: Opening (Empty Board)
-| Engine / Evaluator | Depth $d$ | Move | Score | Nodes ($N$) | Time (ms) | NPS | Effective $b^*$ |
+| Engine / Evaluator | Depth $d$ | Move | Score | Nodes ($N$) | Time (ms) | NPS | Effective $b^{\star}$ |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **Minimax (Simple)** | 1 | Col 1 | 0 | 7 | 0.00 ms | 3.50M | 7.00 |
 | **Minimax (Simple)** | 2 | Col 1 | 0 | 56 | 0.00 ms | 56.0M | 7.48 |
@@ -131,7 +131,7 @@ A standalone benchmarking executable testing three standard benchmark positions:
 | **AlphaBeta (Complex)**| 9 | Col 4 | 155 | **30,479** | 3.86 ms | 7.9M | **3.15** |
 
 #### Test Suite 2: Tactical Tension (14 moves, forced mate in 7 plies)
-| Engine / Evaluator | Depth $d$ | Move | Score | Nodes ($N$) | Time (ms) | NPS | Effective $b^*$ |
+| Engine / Evaluator | Depth $d$ | Move | Score | Nodes ($N$) | Time (ms) | NPS | Effective $b^{\star}$ |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **Minimax (Simple)** | 6 | Col 1 | 0 | 113,049 | 1.16 ms | 97.7M | 6.95 |
 | **AlphaBeta (Simple)** | 6 | Col 4 | 0 | 764 | 0.03 ms | 29.4M | 3.02 |
@@ -159,11 +159,10 @@ Individual detailed charts:
 
 ## 4. Key Scientific Insights
 
-### 1. Collapse of the Effective Branching Factor ($b^*$)
-- Full-width Minimax yields an empirical branching factor of $b^* \approx 7.0 - 7.5$.
-- Alpha-Beta with static center-outward ordering compressed $b^*$ to $\approx 3.10 - 3.35$.
-- With **tactical move ordering**, $b^*$ drops below $3.0$ ($b^* \approx 2.90 - 2.97$), converging tightly towards the theoretical lower bound:
-  $$b_{\text{optimal}} = \sqrt{b} \approx \sqrt{7} \approx 2.64$$
+### 1. Collapse of the Effective Branching Factor ($b^{\star}$)
+- Full-width Minimax yields an empirical branching factor of $b^{\star} \approx 7.0 - 7.5$.
+- Alpha-Beta with static center-outward ordering compressed $b^{\star}$ to $\approx 3.10 - 3.35$.
+- With **tactical move ordering**, $b^{\star}$ drops below $3.0$ ($b^{\star} \approx 2.90 - 2.97$), converging tightly towards the theoretical lower bound: $b_{\mathrm{optimal}} = \sqrt{b} \approx \sqrt{7} \approx 2.64$.
 
 ### 2. Raw Depth vs. Complex Evaluation
 - **Throughput:** `SimpleEvaluator` operates at **35M – 75M NPS**, approximately $4\times$ to $5\times$ faster than `ComplexEvaluator` (**8M – 17M NPS**).
