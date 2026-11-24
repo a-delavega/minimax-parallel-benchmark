@@ -14,7 +14,7 @@ $$
 \forall n \in \text{Opponent Nodes}, \quad V(n) = \min_{m \in \text{Moves}(n)} V(m)
 $$
 
-Under the von Neumann Minimax Theorem and Nash Equilibrium, this strategy is **unexploitable** and guarantees the game-theoretic value $V^*$ of the game. If Connect 4 is played from the root by two perfect rational players, Player 1 (first player) possesses a forced theoretical win with perfect play.
+Under the von Neumann Minimax Theorem and Nash Equilibrium, this strategy is **unexploitable** and guarantees the game-theoretic value $V^{\star}$ of the game. If Connect 4 is played from the root by two perfect rational players, Player 1 (first player) possesses a forced theoretical win with perfect play.
 
 ### The Minimax Fallacy Against Flawed Adversaries
 
@@ -60,20 +60,20 @@ P(m) = \frac{\exp\left(\frac{S(m) - \max_k S(k)}{T}\right)}{\sum_{j \in M(n)} \e
 $$
 
 * High Temperature ($T \to \infty$): Decouples into uniform exploration (Random agent).
-* Low Temperature ($T \to 0$): Collapses into standard $\arg\max$ selection (Optimal Minimax).
+* Low Temperature ($T \to 0$): Collapses into standard $\operatorname{argmax}$ selection (Optimal Minimax).
 
 ### 2.2. $\epsilon$-Greedy Error Distribution
 
 With probability $1 - \epsilon$, the opponent selects the optimal defense:
 
 $$
-P(m^*) = 1 - \epsilon, \quad m^* = \arg\max_{m} S(m)
+P(m^{\star}) = 1 - \epsilon, \quad m^{\star} = \operatorname{argmax}_{m} S(m)
 $$
 
 With probability $\epsilon$, the opponent distributes moves across suboptimal alternatives:
 
 $$
-\forall m \neq m^*, \quad P(m) = \frac{\epsilon}{|M(n)| - 1}
+\forall m \neq m^{\star}, \quad P(m) = \frac{\epsilon}{|M(n)| - 1}
 $$
 
 ---
@@ -93,7 +93,7 @@ Where:
 ### Zero-Regret Minimax Safety Invariant
 
 To guarantee that exploitative optimism never commits suicide:
-1. If $V_{\mathrm{minimax}}(n) \le -T_{\mathrm{mate}}$ (where $T_{\mathrm{mate}} = \text{90\,000}$, the `MATE_THRESHOLD` constant), the engine refuses the move regardless of trap payoff.
+1. If $V_{\mathrm{minimax}}(n) \le -T_{\mathrm{mate}}$ (where $T_{\mathrm{mate}} = 90{,}000$, the `MATE_THRESHOLD` constant), the engine refuses the move regardless of trap payoff.
 2. If a provable forced mate exists ($V(n) \ge T_{\mathrm{mate}}$), the forced win is executed immediately.
 
 ---
