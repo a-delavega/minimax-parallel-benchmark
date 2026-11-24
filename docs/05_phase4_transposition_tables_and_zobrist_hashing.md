@@ -123,7 +123,7 @@ struct alignas(16) TTAtomicSlot {
    - Atomically read $D$ and $K_{\text{enc}}$.
    - Verify: $(K_{\text{enc}} \oplus D) \stackrel{?}{=} K$.
 
-If a concurrent write is partially completed, $(K_{\text{enc}}^{\text{new}} \oplus D^{\text{old}}) \neq K$. The read immediately fails key verification and is transparently treated as a harmless **cache miss**, guaranteeing **zero torn reads and zero data corruption**.
+If a concurrent write is partially completed, $(K_{\mathrm{enc}}^{\mathrm{new}} \oplus D^{\mathrm{old}}) \neq K$. The read immediately fails key verification and is transparently treated as a harmless **cache miss**, guaranteeing **zero torn reads and zero data corruption**.
 
 ---
 
@@ -131,7 +131,7 @@ If a concurrent write is partially completed, $(K_{\text{enc}}^{\text{new}} \opl
 
 ### 5.1 Replacement Strategies
 - **AlwaysReplace:** Unconditionally overwrites the slot with the most recent search data.
-- **DepthPreferred:** Preserves entries with greater search depth. Incorporates generational aging ($D_{\text{eff}} = D_{\text{ex}} - 2 \cdot \Delta_{\text{age}}$) to discard stale positions from previous moves.
+- **DepthPreferred:** Preserves entries with greater search depth. Incorporates generational aging ($D_{\mathrm{eff}} = D_{\mathrm{ex}} - 2 \cdot \Delta_{\mathrm{age}}$) to discard stale positions from previous moves.
 - **TwoTier (2-Slot Buckets):**
   - **Slot 0 (Deep):** Preserves deep root evaluations and principal variations (PV).
   - **Slot 1 (Recent):** Absorbs high-frequency local transpositions.
