@@ -44,7 +44,7 @@ flowchart TD
 ```
 
 - **Phase 0 (Setup & Bitboard Core - Completed):** Zero-friction foundation. Optimal mathematical board representation using 64-bit Bitboards, $O(1)$ branchless win detection with sentinel bits, zero dynamic allocations, and cross-platform CMake C++20 orchestration.
-- **Phase 1 (Sequential Engine & Heuristics - Completed):** Implementation of pure Minimax and Alpha-Beta pruning with static and tactical move ordering; formal empirical comparison between raw search depth (`SimpleEvaluator`) vs. knowledge-heavy pattern heuristics (`ComplexEvaluator`), reducing effective branching factor to $b^* < 3.0$.
+- **Phase 1 (Sequential Engine & Heuristics - Completed):** Implementation of pure Minimax and Alpha-Beta pruning with static and tactical move ordering; formal empirical comparison between raw search depth (`SimpleEvaluator`) vs. knowledge-heavy pattern heuristics (`ComplexEvaluator`), reducing effective branching factor to $b^{\star} < 3.0$.
 - **Phase 2 (Lazy SMP - The HPC Core - Completed):** Multi-threaded game-tree search using `std::jthread` / `std::thread`, where worker threads asynchronously explore the tree with search asymmetry (depth and window perturbations) without mutex contention on the hot path.
 - **Phase 3 (Game Theory & Adaptability - Completed):** Adaptive exploitation against suboptimal or erratic opponents (mitigating the hyper-pessimistic minimax assumption when the adversary makes tactical blunders).
 - **Phase 4 (Memory & Transposition Tables - Completed):** Pruning transposed game states across all concurrent threads using lock-free shared Transposition Tables backed by incremental 64-bit Zobrist Hashing.
